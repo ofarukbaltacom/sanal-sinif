@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatarım</title>
+<style>
+  body { margin: 0; font-family: Arial, sans-serif; background: #0b0d18; color: #eef1ff; }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #14172a; }
+  header a { color: #9fd8ff; text-decoration: none; font-size: 14px; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px; }
+  #view { flex: 1 1 300px; height: 420px; border-radius: 14px; background: #1b1f38; overflow: hidden; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  .panel { flex: 1 1 300px; background: #14172a; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  label { font-size: 13px; color: #9aa3c7; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  select, input[type=color] { background: #1e2340; color: #eef1ff; border: 1px solid #2b3160; border-radius: 8px; padding: 6px; }
+  input[type=range] { flex: 1; }
+  button { background: linear-gradient(135deg, #7b61ff, #4cc9f0); color: #fff; border: none; border-radius: 10px; padding: 12px; font-weight: 600; font-size: 15px; cursor: pointer; }
+  #msg { min-height: 20px; font-size: 13px; color: #8ef0b5; padding: 0 14px; }
+</style>
+</head>
+<body>
+<header><strong>Avatarım</strong><a href="/">← Sınıfa dön</a></header>
+<div class="wrap">
+  <div id="view"></div>
+  <div class="panel" id="controls"></div>
+</div>
+<p id="msg"></p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="avatar.js"></script>
+<script>
+const TOKEN_KEY = 'sanal_token';
+const token = localStorage.getItem(TOKEN_KEY);
+const msg = document.getElementById('msg');
+const controls = document.getElementById('controls');
+
+const FIELDS = [
+  { key: 'height', type: 'range', label: 'Boy', min: 0.9, max: 1.1, step: 0.01 },
+  { key: 'build', type: 'range', label: 'Vücut', min: 0.85, max: 1.2, step: 0.01 },
+  { key: 'skin', type: 'color', label: 'Ten rengi' },
+  { key: 'hair', type: 'select', label: 'Saç', options: ['short', 'long', 'bald', 'curly'], names: ['Kısa', 'Uzun', 'Kel', 'Kıvırcık'] },
+  { key: 'hairColor', type: 'color', label: 'Saç rengi' },
+  { key: 'eyes', type: 'color', label: 'Göz rengi' },
+  { key: 'glasses', type: 'select', label: 'Gözlük', options: ['none', 'round', 'square'], names: ['Yok', 'Yuvarlak', 'Kare'] },
+  { key: 'headwear', type: 'select', label: 'Baş', options: ['none', 'hijab', 'cap', 'beret'], names: ['Yok', 'Başörtüsü', 'Şapka', 'Bere'] },
+  { key: 'headColor', type: 'color', label: 'Baş rengi' },
+  { key: 'shirt', type: 'color', label: 'Üst rengi' },
+  { key: 'pants', type: 'color', label: 'Alt rengi' }
+];
+
+let av = { ...AvatarKit.DEFAULT };
+
+// Önizleme sahnesi
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1f38);
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
+cam.position.set(0, 1.4, 4.2);
+cam.lookAt(0, 1.0, 0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 1.1));
+const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+dl.position.set(2, 4, 3);
+scene.add(dl);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(1.2, 40), new THREE.MeshLambertMaterial({ color: 0x2a2f52 }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+let current = null;
+let spin = Math.PI;
+
+function rebuild() {
+  if (current) scene.remove(current.group);
+  current = AvatarKit.build(THREE, av);
+  scene.add(current.group);
+}
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+(function loop() {
+  requestAnimationFrame(loop);
+  if (current) {
+    spin += 0.008;
+    current.group.rotation.y = spin;
+  }
+  renderer.render(scene, cam);
+})();
+
+function renderControls() {
+  controls.innerHTML = '';
+  for (const f of FIELDS) {
+    const row = document.createElement('label');
+    row.textContent = f.label;
+    let input;
+    if (f.type === 'select') {
+      input = document.createElement('select');
+      f.options.forEach((o, i) => input.appendChild(new Option(f.names[i], o)));
+    } else {
+      input = document.createElement('input');
+      input.type = f.type;
+      if (f.min !== undefined) { input.min = f.min; input.max = f.max; input.step = f.step; }
+    }
+    input.value = av[f.key];
+    input.addEventListener('input', () => {
+      av[f.key] = f.type === 'range' ? Number(input.value) : input.value;
+      rebuild();
+    });
+    row.appendChild(input);
+    controls.appendChild(row);
+  }
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.textContent = 'Kaydet';
+  save.addEventListener('click', saveAvatar);
+  controls.appendChild(save);
+}
+
+async function saveAvatar() {
+  msg.style.color = '#8ef0b5';
+  try {
+    const res = await fetch('/api/avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(av)
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'Kaydedilemedi');
+    msg.textContent = 'Avatarın kaydedildi. Sınıfa yeniden girdiğinde görünecek.';
+  } catch (e) {
+    msg.style.color = '#ff9e9e';
+    msg.textContent = e.message;
+  }
+}
+
+if (!token) {
+  msg.style.color = '#ff9e9e';
+  msg.textContent = 'Önce sınıf sayfasından giriş yap.';
+  renderControls();
+  rebuild();
+} else {
+  fetch('/api/avatar', { headers: { Authorization: 'Bearer ' + token } })
+    .then(r => r.json())
+    .then(data => { av = AvatarKit.sanitize(data); })
+    .catch(() => {})
+    .finally(() => { renderControls(); rebuild(); });
+}
+</script>
+</body>
+</html>
