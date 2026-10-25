@@ -1,82 +1,215 @@
-/* Yalnızca dokunmatik cihazlar (telefon ve tablet) için düzen */
+/* Mobil ve dokunmatik cihazlar için düzen.
+   Yalnızca dokunmatik (pointer: coarse) cihazlarda uygulanır. Masaüstü değişmez. */
 @media (pointer: coarse) {
-  html, body { -webkit-tap-highlight-color: transparent; }
+  :root {
+    --mob-touch: 44px;
+    --mob-safe-top: env(safe-area-inset-top, 0px);
+    --mob-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --mob-safe-left: env(safe-area-inset-left, 0px);
+    --mob-safe-right: env(safe-area-inset-right, 0px);
+  }
 
+  html, body {
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* Kısayol metni telefonda gereksiz */
   #info, #adminCapRow { display: none !important; }
 
-  #hud {
-    display: none !important;
-    top: 60px !important;
-    right: 8px !important;
-    width: min(78vw, 270px) !important;
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
-    padding: 10px !important;
+  /* Ekran dışı yazıların kaydırma çubuğu olmasın */
+  .modalCard, #hud, #seatPanel, #chatLog, #myNotesList, #attList {
+    -webkit-overflow-scrolling: touch;
   }
-  body.hud-open #hud { display: block !important; }
 
+  /* ---------- Menü düğmesi (☰) ---------- */
   #hudToggle {
-    display: block;
+    display: flex !important;
     position: fixed;
-    top: 8px;
-    right: 8px;
-    z-index: 9;
-    width: 46px;
-    height: 46px;
+    top: calc(8px + var(--mob-safe-top));
+    right: calc(8px + var(--mob-safe-right));
+    z-index: 12;
+    width: var(--mob-touch);
+    height: var(--mob-touch);
     padding: 0;
     font-size: 22px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
     border-radius: 12px;
+    background: rgba(20, 23, 40, 0.85);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #eef1ff;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
   }
 
+  /* ---------- HUD: sağdan kayan tam yükseklik panel ---------- */
+  #hud {
+    display: none !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0;
+    width: min(86vw, 320px) !important;
+    max-height: none !important;
+    overflow-y: auto;
+    padding: calc(16px + var(--mob-safe-top)) 14px calc(16px + var(--mob-safe-bottom)) 14px !important;
+    border-radius: 0 !important;
+    z-index: 14 !important;
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+  }
+  body.hud-open #hud {
+    display: block !important;
+    transform: translateX(0);
+  }
+  body.hud-open::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 4, 10, 0.45);
+    z-index: 13;
+  }
+
+  #hud .title { margin-top: 10px; }
+  #hud .row { gap: 8px; }
+  #hud .btn, #hud .field, #hud a.btn {
+    min-height: var(--mob-touch);
+    font-size: 15px;
+  }
+  #hud select.field { min-height: var(--mob-touch); }
+
+  /* ---------- Mini harita: küçük, köşede ---------- */
   #mini {
     display: block !important;
-    top: 60px !important;
-    left: 8px !important;
-    width: 96px !important;
-    height: 96px !important;
+    top: calc(64px + var(--mob-safe-top)) !important;
+    left: calc(8px + var(--mob-safe-left)) !important;
+    width: 92px !important;
+    height: 92px !important;
+    opacity: 0.85;
   }
 
-  #banners { top: 166px !important; max-width: 92vw !important; }
+  /* ---------- Duyuru, zamanlayıcı, kayıt bantları ---------- */
+  #banners {
+    top: calc(64px + var(--mob-safe-top)) !important;
+    left: 50% !important;
+    max-width: calc(100vw - 130px) !important;
+    gap: 4px;
+  }
   .banner { font-size: 12px !important; padding: 5px 10px !important; }
 
+  /* ---------- Koltuk paneli: alt-sol, daraltılabilir ---------- */
   #seatPanel {
     top: auto !important;
-    bottom: 172px !important;
-    left: 8px !important;
-    width: min(46vw, 210px) !important;
-    max-height: 34vh;
+    bottom: calc(10px + var(--mob-safe-bottom)) !important;
+    left: calc(8px + var(--mob-safe-left)) !important;
+    width: min(44vw, 200px) !important;
+    max-height: 30vh;
     overflow-y: auto;
     padding: 8px !important;
+    font-size: 13px;
   }
-  #seatList { grid-template-columns: repeat(4, 1fr) !important; }
+  #seatList { grid-template-columns: repeat(4, 1fr) !important; gap: 4px !important; }
+  #seatList button { min-height: 34px; font-size: 12px; }
+  #standBtn, #nearestBtn { min-height: var(--mob-touch); }
 
+  /* ---------- Sohbet: alt-sağ, küçük ---------- */
   #chat {
-    left: 168px !important;
-    right: 8px !important;
     top: auto !important;
-    bottom: 8px !important;
+    left: calc(114px + var(--mob-safe-left)) !important;
+    right: calc(8px + var(--mob-safe-right)) !important;
+    bottom: calc(10px + var(--mob-safe-bottom)) !important;
     width: auto !important;
     max-width: none !important;
   }
-  #chatBody { height: 150px !important; }
+  #chatHead { padding: 6px 8px; font-size: 12px; }
+  #chatHead .btn { min-width: 36px; min-height: 32px; }
+  #chatBody { height: 130px !important; }
   #chatLog { font-size: 12px !important; padding: 6px !important; }
-  #chatForm .field { font-size: 14px !important; }
-  #chatForm .btn { padding: 8px !important; }
+  #chatForm { padding: 6px; gap: 4px; }
+  #chatForm .field { font-size: 16px !important; min-height: 38px; } /* 16px: iOS yakınlaştırmasını engeller */
+  #chatForm .btn { min-height: 38px; padding: 8px 10px !important; }
 
+  /* ---------- Yoklama ve anket: ortada ---------- */
   #rollBox {
-    top: 58px !important;
+    top: calc(64px + var(--mob-safe-top)) !important;
     bottom: auto !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
-    width: min(80vw, 260px) !important;
+    width: min(84vw, 280px) !important;
+  }
+  #rollHere { min-height: var(--mob-touch); font-size: 16px; }
+
+  #pollBox {
+    top: calc(120px + var(--mob-safe-top)) !important;
+    width: 92vw !important;
+  }
+  #pollBox .btn { min-height: var(--mob-touch); font-size: 15px; }
+
+  /* ---------- Joystick: sol-alt, seat paneli ile çakışmayacak yerde ---------- */
+  #joystick {
+    bottom: calc(96px + var(--mob-safe-bottom)) !important;
+    left: calc(14px + var(--mob-safe-left)) !important;
+    width: 110px !important;
+    height: 110px !important;
+  }
+  #stick { width: 46px; height: 46px; left: 32px; top: 32px; }
+
+  /* ---------- Kalk düğmesi: oturunca sağ-altta belirgin ---------- */
+  #mobileStand {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(96px + var(--mob-safe-bottom)) !important;
+    right: calc(14px + var(--mob-safe-right)) !important;
+    min-width: 120px;
+    min-height: 52px !important;
+    font-size: 17px !important;
+    font-weight: 700;
+    border-radius: 16px !important;
+    z-index: 15 !important;
   }
 
-  #pollBox { top: 150px !important; width: 90vw !important; }
+  /* ---------- Modal pencereler: tam ekran kaydırmalı ---------- */
+  .modal {
+    align-items: stretch !important;
+    justify-content: stretch !important;
+  }
+  .modalCard, .modalCard.wide {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    height: 100%;
+    border-radius: 0 !important;
+    padding: calc(14px + var(--mob-safe-top)) 14px calc(14px + var(--mob-safe-bottom)) 14px !important;
+  }
+  .modalCard .btn, .modalCard .field { min-height: var(--mob-touch); font-size: 16px; }
+  .formRow { flex-wrap: wrap; }
+  .formRow .field { flex: 1 1 200px; }
+  #notesLog { height: 45vh; }
+  #calGrid .day { padding: 10px 0; font-size: 14px; min-height: 40px; }
+  .tabs .tab { min-height: var(--mob-touch); font-size: 14px; }
+  .keys { grid-template-columns: 1fr; gap: 4px; }
+  .keys .k { margin-top: 8px; }
 
-  #joystick { bottom: 16px !important; left: 16px !important; }
+  /* ---------- Toast'lar: üstte, menü ile çakışmayacak ---------- */
+  #toasts { top: calc(64px + var(--mob-safe-top)) !important; max-width: 86vw; }
+  .toast { font-size: 13px; }
 
-  .btn { min-height: 40px; }
-  .modalCard { padding: 12px; }
-  #calGrid .day { padding: 8px 0; font-size: 13px; }
-  #notesLog { height: 200px; }
+  /* ---------- Yatay mod: sahne daha geniş ---------- */
+  @media (orientation: landscape) and (max-height: 500px) {
+    #hudToggle { top: 6px; }
+    #mini { width: 76px !important; height: 76px !important; top: 56px !important; }
+    #banners { top: 56px !important; }
+    #seatPanel { max-height: 40vh; }
+    #chatBody { height: 90px !important; }
+    #chatLog { font-size: 11px !important; }
+    #joystick { width: 96px !important; height: 96px !important; bottom: 78px !important; }
+    #mobileStand { bottom: 78px !important; min-height: 46px !important; }
+  }
+
+  /* ---------- Ekran çok dar ise (küçük telefonlar) ---------- */
+  @media (max-width: 360px) {
+    #chat { left: calc(104px + var(--mob-safe-left)) !important; }
+    #seatPanel { width: 150px !important; }
+    #mobileStand { min-width: 100px; font-size: 15px !important; }
+  }
 }
