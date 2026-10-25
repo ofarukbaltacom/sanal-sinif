@@ -66,6 +66,11 @@ db.exec(`
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS avatars (
+    user_id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 // ---------- Yardımcılar ----------
@@ -152,6 +157,48 @@ function notesForRoom(userId, roomId) {
     .all(userId, roomId).map(noteView);
 }
 
+// ---------- Avatar ----------
+const AV_HEX = /^#[0-9a-fA-F]{6}$/;
+const AV_ENUM = {
+  hair: ['short', 'long', 'bald', 'curly'],
+  glasses: ['none', 'round', 'square'],
+  headwear: ['none', 'hijab', 'cap', 'beret']
+};
+const AV_DEFAULT = {
+  height: 1, build: 1, skin: '#f1c27d', hair: 'short', hairColor: '#2b1d12',
+  eyes: '#3b2a1a', glasses: 'none', shirt: '#2980b9', pants: '#2c3e50',
+  headwear: 'none', headColor: '#1f4e9c'
+};
+
+function sanitizeAvatar(input) {
+  const a = input && typeof input === 'object' ? input : {};
+  const hex = (v, d) => (typeof v === 'string' && AV_HEX.test(v) ? v : d);
+  const en = (v, list, d) => (list.includes(v) ? v : d);
+  const num = (v, min, max, d) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : d;
+  };
+  return {
+    height: num(a.height, 0.9, 1.1, AV_DEFAULT.height),
+    build: num(a.build, 0.85, 1.2, AV_DEFAULT.build),
+    skin: hex(a.skin, AV_DEFAULT.skin),
+    hair: en(a.hair, AV_ENUM.hair, AV_DEFAULT.hair),
+    hairColor: hex(a.hairColor, AV_DEFAULT.hairColor),
+    eyes: hex(a.eyes, AV_DEFAULT.eyes),
+    glasses: en(a.glasses, AV_ENUM.glasses, AV_DEFAULT.glasses),
+    shirt: hex(a.shirt, AV_DEFAULT.shirt),
+    pants: hex(a.pants, AV_DEFAULT.pants),
+    headwear: en(a.headwear, AV_ENUM.headwear, AV_DEFAULT.headwear),
+    headColor: hex(a.headColor, AV_DEFAULT.headColor)
+  };
+}
+
+function avatarFor(userId) {
+  const row = db.prepare('SELECT data FROM avatars WHERE user_id = ?').get(userId);
+  if (!row) return { ...AV_DEFAULT };
+  try { return sanitizeAvatar(JSON.parse(row.data)); } catch (e) { return { ...AV_DEFAULT }; }
+}
+
 const saveAttendance = db.prepare(
   'INSERT OR IGNORE INTO attendance (user_id, room_id, day, created_at) VALUES (?, ?, ?, ?)'
 );
@@ -208,10 +255,11 @@ setInterval(() => {
 
 // ---------- Odalar ----------
 const ROOMS = {
-  'sinif-1':    { name: 'Kudüs Sınıfı', type: 'class', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
-  'sinif-2':    { name: 'Medine Sınıfı', type: 'class', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
-  'ortak-alan': { name: 'Ortak Alan', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
-  'etkinlik':   { name: 'Etkinlik Salonu', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null }
+  'sinif-1':      { name: 'Kudüs Sınıfı', type: 'class', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
+  'sinif-2':      { name: 'Medine Sınıfı', type: 'class', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
+  'ortak-alan':   { name: 'Ortak Alan', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
+  'etkinlik':     { name: 'Etkinlik Salonu', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
+  'arsiv-salonu': { name: 'Eğitim Arşivi', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null }
 };
 
 function roomExists(id) {
@@ -280,6 +328,21 @@ function broadcastRooms() {
 
 function selfView(p) {
   return { id: p.id, name: p.name, role: p.role, roomId: p.roomId, x: p.x, z: p.z, yaw: p.yaw, hand: p.hand, seat: p.seat };
+}
+
+// Sık gönderilen konum verisi: avatar bilgisi burada yer almaz (ayrı olay ile gönderilir)
+function stateView(p) {
+  return { id: p.id, name: p.name, role: p.role, roomId: p.roomId, x: p.x, z: p.z, yaw: p.yaw, hand: p.hand, seat: p.seat };
+}
+
+function announceAvatar(p) {
+  if (p.roomId) io.to(p.roomId).emit('avatar', { id: p.id, avatar: p.avatar });
+}
+
+function sendAvatarsTo(socket, roomId) {
+  for (const q of Object.values(players)) {
+    if (q.roomId === roomId) socket.emit('avatar', { id: q.id, avatar: q.avatar });
+  }
 }
 
 function seatTaken(roomId, seatId) {
@@ -386,6 +449,8 @@ function moveRoom(socket, p, roomId) {
   socket.emit('room-changed', selfView(p));
   socket.emit('my-room-notes', notesForRoom(p.userId, roomId));
   socket.emit('room-extras', roomExtras(roomId));
+  sendAvatarsTo(socket, roomId);
+  announceAvatar(p);
   sendRoll(roomId);
   broadcastRooms();
 }
@@ -402,6 +467,7 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy',
     "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
     "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; " +
+    "frame-src https://www.youtube-nocookie.com https://www.youtube.com; " +
     "connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
   next();
 });
@@ -448,6 +514,24 @@ app.post('/api/logout', auth, (req, res) => {
 
 app.get('/api/me', auth, (req, res) => {
   res.json({ user: req.user });
+});
+
+app.get('/api/avatar', auth, (req, res) => {
+  res.json(avatarFor(req.user.id));
+});
+
+app.post('/api/avatar', auth, (req, res) => {
+  const av = sanitizeAvatar(req.body);
+  db.prepare(
+    'INSERT INTO avatars (user_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at'
+  ).run(req.user.id, JSON.stringify(av), new Date().toISOString());
+  for (const p of Object.values(players)) {
+    if (p.userId === req.user.id) {
+      p.avatar = av;
+      announceAvatar(p);
+    }
+  }
+  res.json({ ok: true, avatar: av });
 });
 
 app.get('/api/events', auth, (req, res) => {
@@ -641,13 +725,16 @@ io.on('connection', (socket) => {
       z: spawn.z,
       yaw: spawn.yaw,
       hand: false,
-      seat: null
+      seat: null,
+      avatar: avatarFor(user.id)
     };
     players[socket.id] = p;
     socket.join(roomId);
     socket.emit('joined', selfView(p));
     socket.emit('my-room-notes', notesForRoom(user.id, roomId));
     socket.emit('room-extras', roomExtras(roomId));
+    sendAvatarsTo(socket, roomId);
+    announceAvatar(p);
     sendRoll(roomId);
     broadcastRooms();
   });
@@ -886,7 +973,7 @@ io.on('connection', (socket) => {
 setInterval(() => {
   for (const id of Object.keys(ROOMS)) {
     const list = Object.values(players).filter(p => p.roomId === id);
-    if (list.length) io.to(id).volatile.emit('state', list);
+    if (list.length) io.to(id).volatile.emit('state', list.map(stateView));
   }
 }, 50);
 
