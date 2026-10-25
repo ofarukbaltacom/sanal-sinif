@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yönetim Paneli</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+  header { background: #1e1e2e; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  header a { color: #9fd8ff; }
+  main { padding: 16px; max-width: 1150px; margin: 0 auto; }
+  section { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  h2 { margin: 0 0 12px; font-size: 18px; }
+  input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+  button { background: #2980b9; color: #fff; border: none; cursor: pointer; }
+  button.danger { background: #e74c3c; }
+  button.gray { background: #7f8c8d; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
+  .row label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  .msg { color: #c0392b; font-size: 14px; min-height: 18px; margin: 6px 0 0; }
+  .ok { color: #27ae60; }
+  .note { border-left: 3px solid #2980b9; padding: 6px 10px; margin-bottom: 8px; background: #f8fbff; font-size: 14px; }
+  .sub { color: #777; font-size: 12px; }
+  #loginBox { max-width: 340px; margin: 60px auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  #loginBox input { width: 100%; margin-bottom: 8px; }
+  #loginBox button { width: 100%; padding: 10px; }
+  #recPlayer { width: 100%; max-height: 360px; margin-top: 12px; background: #000; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <strong>Yönetim Paneli</strong>
+  <div>
+    <span id="who"></span>
+    · <a href="/">Sınıfa dön</a>
+    · <button id="logout" class="gray" type="button">Çıkış</button>
+  </div>
+</header>
+
+<main>
+  <div id="loginBox" hidden>
+    <h2>Yönetici Girişi</h2>
+    <input id="lUser" placeholder="Kullanıcı adı">
+    <input id="lPass" type="password" placeholder="Şifre">
+    <button id="lBtn" type="button">Giriş yap</button>
+    <p id="lMsg" class="msg"></p>
+  </div>
+
+  <div id="area" hidden>
+    <section>
+      <h2>Kullanıcılar</h2>
+      <form id="userForm" class="row">
+        <label>Kullanıcı adı<input id="uName" maxlength="30" placeholder="ornek.ad"></label>
+        <label>Görünen ad<input id="uDisplay" maxlength="40" placeholder="Ad Soyad"></label>
+        <label>Şifre<input id="uPass" type="text" maxlength="60" placeholder="en az 6 karakter"></label>
+        <label>Rol
+          <select id="uRole">
+            <option value="student">Öğrenci</option>
+            <option value="teacher">Eğitmen</option>
+          </select>
+        </label>
+        <label><span><input id="uAdmin" type="checkbox"> Yönetici (moderatör)</span></label>
+        <button type="submit">Hesap aç</button>
+      </form>
+      <p id="uMsg" class="msg"></p>
+      <table>
+        <thead><tr><th>Ad</th><th>Kullanıcı adı</th><th>Rol</th><th>Yönetici</th><th></th></tr></thead>
+        <tbody id="userRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Eğitim Takvimi</h2>
+      <form id="eventForm" class="row">
+        <label>Başlık<input id="eTitle" maxlength="100" placeholder="Örn: Güvenlik eğitimi"></label>
+        <label>Tarih<input id="eDate" type="date"></label>
+        <label>Saat<input id="eTime" type="time"></label>
+        <label>Oda
+          <select id="eRoom">
+            <option value="">Tüm odalar</option>
+            <option value="sinif-1">Kudüs Sınıfı</option>
+            <option value="sinif-2">Medine Sınıfı</option>
+            <option value="ortak-alan">Ortak Alan</option>
+            <option value="etkinlik">Etkinlik Salonu</option>
+          </select>
+        </label>
+        <label style="flex:1 1 220px">Açıklama<input id="eDesc" maxlength="500"></label>
+        <button type="submit">Etkinlik ekle</button>
+      </form>
+      <p id="eMsg" class="msg"></p>
+      <table>
+        <thead><tr><th>Tarih</th><th>Saat</th><th>Başlık</th><th>Oda</th><th>Açıklama</th><th></th></tr></thead>
+        <tbody id="eventRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Ders Kayıtları</h2>
+      <div class="sub" style="margin-bottom:8px">Kayıtlar moderatör tarafından alınmıştır. Dağıtımdan önce katılımcı rızasını ve yasal yükümlülükleri kontrol edin.</div>
+      <table>
+        <thead><tr><th>Tarih</th><th>Sınıf</th><th>Süre</th><th>Boyut</th><th>Kaydeden</th><th></th></tr></thead>
+        <tbody id="recRows"></tbody>
+      </table>
+      <p id="recMsg" class="msg"></p>
+      <video id="recPlayer" controls hidden></video>
+    </section>
+
+    <section>
+      <h2>Kullanıcı Notları</h2>
+      <div class="row">
+        <label>Kullanıcı
+          <select id="nUser"></select>
+        </label>
+        <button id="nLoad" type="button">Notları göster</button>
+      </div>
+      <div id="notesOut"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const TOKEN_KEY = 'sanal_token';
+const ROOM_NAMES = { 'sinif-1': 'Kudüs Sınıfı', 'sinif-2': 'Medine Sınıfı', 'ortak-alan': 'Ortak Alan', 'etkinlik': 'Etkinlik Salonu' };
+const ROLE_NAMES = { student: 'Öğrenci', teacher: 'Eğitmen', moderator: 'Moderatör' };
+let token = localStorage.getItem(TOKEN_KEY);
+let users = [];
+let currentObjectUrl = null;
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || 'İstek başarısız (' + res.status + ')');
+  return data;
+}
+
+function cell(text) {
+  const td = document.createElement('td');
+  td.textContent = text == null ? '' : String(text);
+  return td;
+}
+
+function button(text, cls, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = text;
+  if (cls) b.className = cls;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function fmtSize(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function fmtDuration(ms) {
+  const s = Math.round(ms / 1000);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+function showArea(show) {
+  document.getElementById('loginBox').hidden = show;
+  document.getElementById('area').hidden = !show;
+}
+
+async function boot() {
+  if (!token) return showArea(false);
+  try {
+    const d = await api('/api/me');
+    if (!d.user.isAdmin) {
+      document.getElementById('lMsg').textContent = 'Bu sayfa yalnızca yöneticiler içindir.';
+      showArea(false);
+      return;
+    }
+    document.getElementById('who').textContent = d.user.displayName;
+    showArea(true);
+    await loadAll();
+  } catch (e) {
+    token = null;
+    localStorage.removeItem(TOKEN_KEY);
+    showArea(false);
+  }
+}
+
+document.getElementById('lBtn').addEventListener('click', async () => {
+  const msg = document.getElementById('lMsg');
+  msg.textContent = '';
+  try {
+    const d = await api('/api/login', {
+      method: 'POST',
+      body: { username: document.getElementById('lUser').value, password: document.getElementById('lPass').value }
+    });
+    if (!d.user.isAdmin) {
+      msg.textContent = 'Bu hesabın yönetici yetkisi yok.';
+      return;
+    }
+    token = d.token;
+    localStorage.setItem(TOKEN_KEY, token);
+    document.getElementById('who').textContent = d.user.displayName;
+    showArea(true);
+    await loadAll();
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+});
+
+document.getElementById('logout').addEventListener('click', async () => {
+  try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
+  localStorage.removeItem(TOKEN_KEY);
+  location.href = '/';
+});
+
+async function loadAll() {
+  await Promise.all([loadUsers(), loadEvents(), loadRecordings()]);
+}
+
+async function loadUsers() {
+  users = await api('/api/admin/users');
+  const tbody = document.getElementById('userRows');
+  tbody.innerHTML = '';
+  for (const u of users) {
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(u.displayName));
+    tr.appendChild(cell(u.username));
+    tr.appendChild(cell(u.role === 'teacher' ? 'Eğitmen' : 'Öğrenci'));
+    tr.appendChild(cell(u.isAdmin ? 'Evet' : ''));
+    const act = document.createElement('td');
+    act.appendChild(button('Şifre sıfırla', 'gray', async () => {
+      const pw = prompt(u.username + ' için yeni şifre (en az 6 karakter):');
+      if (!pw) return;
+      const m = document.getElementById('uMsg');
+      try {
+        await api('/api/admin/users/' + u.id + '/password', { method: 'POST', body: { password: pw } });
+        m.className = 'msg ok';
+        m.textContent = u.username + ' için şifre güncellendi.';
+      } catch (err) {
+        m.className = 'msg';
+        m.textContent = err.message;
+      }
+    }));
+    tr.appendChild(act);
+    tbody.appendChild(tr);
+  }
+
+  const sel = document.getElementById('nUser');
+  sel.innerHTML = '';
+  for (const u of users) {
+    const o = document.createElement('option');
+    o.value = u.id;
+    o.textContent = u.displayName + ' (' + u.username + ')';
+    sel.appendChild(o);
+  }
+}
+
+document.getElementById('userForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('uMsg');
+  msg.className = 'msg';
+  msg.textContent = '';
+  try {
+    await api('/api/admin/users', {
+      method: 'POST',
+      body: {
+        username: document.getElementById('uName').value,
+        displayName: document.getElementById('uDisplay').value,
+        password: document.getElementById('uPass').value,
+        role: document.getElementById('uRole').value,
+        isAdmin: document.getElementById('uAdmin').checked
+      }
+    });
+    msg.className = 'msg ok';
+    msg.textContent = 'Hesap açıldı.';
+    e.target.reset();
+    await loadUsers();
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+});
+
+async function loadEvents() {
+  const events = await api('/api/events');
+  const tbody = document.getElementById('eventRows');
+  tbody.innerHTML = '';
+  for (const ev of events) {
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(ev.date));
+    tr.appendChild(cell(ev.time));
+    tr.appendChild(cell(ev.title));
+    tr.appendChild(cell(ev.roomId ? ROOM_NAMES[ev.roomId] : 'Tüm odalar'));
+    tr.appendChild(cell(ev.description));
+    const act = document.createElement('td');
+    act.appendChild(button('Sil', 'danger', async () => {
+      if (!confirm('Bu etkinlik silinsin mi?')) return;
+      await api('/api/admin/events/' + ev.id, { method: 'DELETE' });
+      await loadEvents();
+    }));
+    tr.appendChild(act);
+    tbody.appendChild(tr);
+  }
+}
+
+document.getElementById('eventForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('eMsg');
+  msg.className = 'msg';
+  msg.textContent = '';
+  try {
+    await api('/api/admin/events', {
+      method: 'POST',
+      body: {
+        title: document.getElementById('eTitle').value,
+        date: document.getElementById('eDate').value,
+        time: document.getElementById('eTime').value,
+        roomId: document.getElementById('eRoom').value,
+        description: document.getElementById('eDesc').value
+      }
+    });
+    msg.className = 'msg ok';
+    msg.textContent = 'Etkinlik eklendi.';
+    document.getElementById('eTitle').value = '';
+    document.getElementById('eDesc').value = '';
+    await loadEvents();
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+});
+
+async function fetchRecordingBlob(id) {
+  const res = await fetch('/api/admin/recordings/' + id + '/file', {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  if (!res.ok) throw new Error('Kayıt alınamadı (' + res.status + ')');
+  return res.blob();
+}
+
+async function loadRecordings() {
+  const list = await api('/api/admin/recordings');
+  const tbody = document.getElementById('recRows');
+  tbody.innerHTML = '';
+  if (!list.length) {
+    const tr = document.createElement('tr');
+    const td = cell('Henüz kayıt yok.');
+    td.colSpan = 6;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const r of list) {
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(new Date(r.createdAt).toLocaleString('tr-TR')));
+    tr.appendChild(cell(r.roomName));
+    tr.appendChild(cell(fmtDuration(r.durationMs)));
+    tr.appendChild(cell(fmtSize(r.sizeBytes)));
+    tr.appendChild(cell(r.createdBy));
+    const act = document.createElement('td');
+    act.appendChild(button('İzle', '', async () => {
+      const msg = document.getElementById('recMsg');
+      msg.className = 'msg';
+      msg.textContent = '';
+      try {
+        const blob = await fetchRecordingBlob(r.id);
+        if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = URL.createObjectURL(blob);
+        const player = document.getElementById('recPlayer');
+        player.src = currentObjectUrl;
+        player.hidden = false;
+        player.play().catch(() => {});
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    }));
+    act.appendChild(document.createTextNode(' '));
+    act.appendChild(button('İndir', 'gray', async () => {
+      const msg = document.getElementById('recMsg');
+      try {
+        const blob = await fetchRecordingBlob(r.id);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ders-kaydi-' + r.id + '.webm';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      } catch (err) {
+        msg.className = 'msg';
+        msg.textContent = err.message;
+      }
+    }));
+    act.appendChild(document.createTextNode(' '));
+    act.appendChild(button('Sil', 'danger', async () => {
+      if (!confirm('Bu kayıt kalıcı olarak silinsin mi?')) return;
+      await api('/api/admin/recordings/' + r.id, { method: 'DELETE' });
+      await loadRecordings();
+    }));
+    tr.appendChild(act);
+    tbody.appendChild(tr);
+  }
+}
+
+document.getElementById('nLoad').addEventListener('click', async () => {
+  const userId = document.getElementById('nUser').value;
+  const out = document.getElementById('notesOut');
+  out.innerHTML = '';
+  try {
+    const list = await api('/api/admin/notes?userId=' + encodeURIComponent(userId));
+    if (!list.length) { out.textContent = 'Bu kullanıcının notu yok.'; return; }
+    for (const n of list) {
+      const div = document.createElement('div');
+      div.className = 'note';
+      const meta = document.createElement('div');
+      meta.className = 'sub';
+      meta.textContent = new Date(n.createdAt).toLocaleString('tr-TR') + ' · ' + (ROOM_NAMES[n.roomId] || n.roomId);
+      div.appendChild(meta);
+      div.appendChild(document.createTextNode(n.text));
+      out.appendChild(div);
+    }
+  } catch (err) {
+    out.textContent = err.message;
+  }
+});
+
+boot();
+</script>
+</body>
+</html>
