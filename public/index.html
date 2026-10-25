@@ -1847,7 +1847,34 @@ function applySeatColors() {
 }
 
 function updateSeatUI() {
-  const show = joined && myRole === 'student' && isClassRoom(myRoom);
+ function updateSeatUI() {
+  const show = joined && isClassRoom(myRoom) && (myRole === 'student' || myRole === 'moderator' || myRole === 'teacher');
+  $('seatPanel').style.display = show ? 'block' : 'none';
+  $('standBtn').style.display = mySeat ? 'block' : 'none';
+  $('nearestBtn').style.display = (mySeat || myRole !== 'student') ? 'none' : 'block';
+  $('seatStatus').textContent = mySeat ? 'Oturuyorsun: ' + mySeat : 'Boş koltuklar (tıkla):';
+
+  const emptyIds = (myRole === 'student' ? STUDENT_SEATS : Object.keys(SEATS)).filter(id => !occupiedMap[id] && SEATS[id].role === myRole);
+  const key = emptyIds.join(',') + '|' + (mySeat || '') + '|' + myRole;
+  if (key === lastSeatKey) return;
+  lastSeatKey = key;
+
+  const list = $('seatList');
+  list.innerHTML = '';
+  if (mySeat) return;
+  if (!emptyIds.length) {
+    $('seatStatus').textContent = 'Boş koltuk yok';
+    return;
+  }
+  for (const id of emptyIds) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = id;
+    b.setAttribute('aria-label', id + ' koltuğuna otur');
+    b.addEventListener('click', () => trySit(id, true));
+    list.appendChild(b);
+  }
+}
   $('seatPanel').style.display = show ? 'block' : 'none';
   $('standBtn').style.display = mySeat ? 'block' : 'none';
   $('nearestBtn').style.display = mySeat ? 'none' : 'block';
