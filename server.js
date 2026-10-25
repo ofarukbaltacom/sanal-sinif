@@ -6,9 +6,10 @@ const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { Server } = require('socket.io');
 
-const DB_FILE = path.join(__dirname, 'data.sqlite');
-const BACKUP_DIR = path.join(__dirname, 'backups');
-const REC_DIR = path.join(__dirname, 'recordings');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_FILE = path.join(DATA_DIR, 'data.sqlite');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const REC_DIR = path.join(DATA_DIR, 'recordings');
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_REC_BYTES = 1024 * 1024 * 1024;
 
