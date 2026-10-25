@@ -403,6 +403,7 @@
       <option value="sinif-2">Medine Sınıfı</option>
       <option value="ortak-alan">Ortak Alan</option>
       <option value="etkinlik">Etkinlik Salonu</option>
+      <option value="arsiv-salonu">Eğitim Arşivi</option>
     </select>
     <button id="join" class="btn block" type="button">Katıl</button>
     <button id="roomLogout" class="btn ghost block" type="button">Çıkış yap</button>
@@ -416,6 +417,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="avatar.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 function own(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
@@ -435,7 +437,13 @@ const TOKEN_KEY = 'sanal_token';
 const LAST_USER_KEY = 'sanal_last_user';
 const QUALITY_KEY = 'sanal_quality';
 const TOUR_KEY = 'sanal_tour_seen';
-const ROOM_NAMES = { 'sinif-1': 'Kudüs Sınıfı', 'sinif-2': 'Medine Sınıfı', 'ortak-alan': 'Ortak Alan', 'etkinlik': 'Etkinlik Salonu' };
+// Eğitim Arşivi: YouTube'da liste dışı oynatma listesinin ID'si (paylaşım bağlantısındaki list= sonrası)
+const ARCHIVE_PLAYLIST_ID = 'BURAYA_LISTE_ID';
+const ROOM_NAMES = {
+  'sinif-1': 'Kudüs Sınıfı', 'sinif-2': 'Medine Sınıfı',
+  'ortak-alan': 'Ortak Alan', 'etkinlik': 'Etkinlik Salonu',
+  'arsiv-salonu': 'Eğitim Arşivi'
+};
 
 const THEMES = {
   class:  { floor: 0xc8b48a, wall: 0xf3efe6, ceil: 0xf5f5f5, sky: 0xa9cde8, accent: '#1f4e9c' },
@@ -445,7 +453,6 @@ const THEMES = {
 
 function winAt(c, w = 2.6) { return { c, w, y0: 1.0, y1: 3.0 }; }
 const ROOM_OPENINGS = {
-  // Sınıf: sol/sağ duvarlarda şeffaf pencereler, öğrencilerin arkasındaki (ön) duvarda renkli vitray pencereler
   class:  { left: [winAt(-5), winAt(0), winAt(5)], right: [winAt(-5), winAt(0), winAt(5)], front: [winAt(-5), winAt(0), winAt(5)] },
   lounge: { back: [winAt(-4, 3), winAt(4, 3)], right: [winAt(0, 3)] },
   hall:   { left: [winAt(-4), winAt(4)], right: [winAt(-4), winAt(4)] }
@@ -507,9 +514,12 @@ let adminRecChunks = [];
 let adminStream = null;
 const peers = new Map();
 const avatars = new Map();
+const avatarData = new Map();   // oyuncu id -> avatar verisi
 const clickables = [];
 const chairMats = {};
 const chairBase = {};
+// Oda değiştirirken yok edilmemesi gereken paylaşılan geometri/doku/malzemeler
+const SHARED = new Set();
 
 // ================= Yardımcılar =================
 function isAdminUser() { return !!(me && me.isAdmin); }
@@ -989,6 +999,10 @@ const goldM = new THREE.MeshPhongMaterial({ color: 0xd9a521, specular: 0xfff0b0,
 const kudusDomeM = new THREE.MeshPhongMaterial({ color: 0xe0b02a, specular: 0xfff3b0, shininess: 90 });
 const medineDomeM = new THREE.MeshPhongMaterial({ color: 0x1e8f4e, specular: 0xbff5d0, shininess: 70 });
 
+// Paylaşılan kaynaklar: oda değişiminde silinmez
+for (const t of [tileTex, plaqueTex, stainedTex, carpetTex]) SHARED.add(t);
+for (const m of [goldM, kudusDomeM, medineDomeM]) SHARED.add(m);
+
 function tileWall(along, fixed, y0, y1) {
   const len = S, h = y1 - y0;
   const t = patternClone(tileTex, len / 1.2, h / 1.2);
@@ -1138,6 +1152,8 @@ const flagGeo = new THREE.PlaneGeometry(3, 2, 16, 6);
 flagGeo.translate(1.5, 0, 0);
 const flagBase = flagGeo.attributes.position.array.slice();
 const flagMat = new THREE.MeshBasicMaterial({ map: makeFlagTexture(), side: THREE.DoubleSide });
+SHARED.add(flagGeo);
+SHARED.add(flagMat);
 
 function waveFlag(t) {
   const p = flagGeo.attributes.position;
@@ -1293,6 +1309,14 @@ function buildViewTemplate(kind) {
 }
 const TEMPLATES = { kudus: buildViewTemplate('kudus'), medine: buildViewTemplate('medine') };
 
+// Şablonların geometri ve malzemeleri, klonlar tarafından paylaşılır: silinmemeli
+for (const tpl of Object.values(TEMPLATES)) {
+  tpl.traverse(o => {
+    if (o.geometry) SHARED.add(o.geometry);
+    if (o.material) [].concat(o.material).forEach(m => SHARED.add(m));
+  });
+}
+
 function addOutsideView(along, fixed, view) {
   const sign = fixed > 0 ? 1 : -1;
   const nx = along === 'z' ? sign : 0;
@@ -1330,6 +1354,7 @@ function buildWindow(along, fixed, o, stained) {
   const glassMat = stained
     ? new THREE.MeshBasicMaterial({ map: stainedTex, transparent: true, opacity: 0.92, side: THREE.DoubleSide })
     : new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+  if (stained) SHARED.add(glassMat);
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(w, h), glassMat);
   if (along === 'x') glass.position.set(o.c, yc, fixed);
   else { glass.position.set(fixed, yc, o.c); glass.rotation.y = Math.PI / 2; }
@@ -1449,9 +1474,28 @@ function setBoardStream(stream) {
   screenMat.needsUpdate = true;
 }
 
+// ================= Bellek yönetimi (oda ve avatar geçişlerinde takılmayı azaltır) =================
+// Bir nesnenin geometri ve malzemelerini, paylaşılmıyorsa GPU belleğinden serbest bırakır.
+function disposeObject(root) {
+  root.traverse(o => {
+    if (o.geometry && !SHARED.has(o.geometry)) o.geometry.dispose();
+    if (o.material) {
+      [].concat(o.material).forEach(m => {
+        if (SHARED.has(m)) return;
+        if (m.map && !SHARED.has(m.map)) m.map.dispose();
+        m.dispose();
+      });
+    }
+  });
+}
+
 // ================= Oda dekorları =================
 function clearDecor() {
-  while (decorGroup.children.length) decorGroup.remove(decorGroup.children[0]);
+  while (decorGroup.children.length) {
+    const c = decorGroup.children[0];
+    decorGroup.remove(c);
+    disposeObject(c);
+  }
   obstacles.length = 0;
   clickables.length = 0;
   for (const k of Object.keys(chairMats)) { delete chairMats[k]; delete chairBase[k]; }
@@ -1625,6 +1669,84 @@ function buildHall(roomId) {
   for (const x of [-6, 0, 6]) addKandil(x, 0.5);
 }
 
+// ================= Eğitim Arşivi odası (YouTube liste dışı oynatma listesi) =================
+let archiveEls = null;
+
+function ensureArchiveUI() {
+  if (archiveEls) return archiveEls;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn ghost block';
+  btn.textContent = '🎬 Arşivi aç/kapat';
+  btn.style.cssText = 'margin-top:8px;display:none';
+
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  panel.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,760px);padding:10px;display:none;z-index:25';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:700';
+  head.textContent = 'Eğitim Arşivi';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'btn ghost small';
+  close.textContent = 'Kapat';
+  head.appendChild(close);
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000';
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  frame.allowFullscreen = true;
+  panel.appendChild(head);
+  panel.appendChild(frame);
+  document.body.appendChild(panel);
+  $('hud').appendChild(btn);
+
+  const hide = () => { panel.style.display = 'none'; frame.src = ''; };
+  close.addEventListener('click', hide);
+  btn.addEventListener('click', () => {
+    if (panel.style.display === 'block') return hide();
+    if (!ARCHIVE_PLAYLIST_ID || ARCHIVE_PLAYLIST_ID === 'BURAYA_LISTE_ID') {
+      return showHint('Arşiv listesi henüz tanımlanmadı.');
+    }
+    frame.src = 'https://www.youtube-nocookie.com/embed/videoseries?list=' +
+      encodeURIComponent(ARCHIVE_PLAYLIST_ID) + '&loop=1&autoplay=1&rel=0';
+    panel.style.display = 'block';
+  });
+
+  archiveEls = { btn, panel, hide };
+  return archiveEls;
+}
+
+function syncArchiveUI(roomId) {
+  if (roomId !== 'arsiv-salonu') {
+    if (archiveEls) { archiveEls.hide(); archiveEls.btn.style.display = 'none'; }
+    return;
+  }
+  ensureArchiveUI().btn.style.display = 'block';
+}
+
+function buildArchive(roomId) {
+  buildShell('lounge', { back: [winAt(-4, 3), winAt(4, 3)], right: [winAt(0, 3)] }, 'medine');
+  buildBase(roomId, 'lounge');
+  islamicBands(true);
+  addCarpet(0, 0, 10, 8);
+  screen.visible = false;
+  boardFrame.visible = false;
+
+  // Arka duvardaki başlık panosu
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(7, 2.6),
+    new THREE.MeshBasicMaterial({ map: makeSignTexture('EĞİTİM ARŞİVİ', '#1f4e9c') })
+  );
+  sign.position.set(0, 2.4, -9.82);
+  decorGroup.add(sign);
+
+  // İzleyici sıraları
+  for (let r = 0; r < 3; r++) {
+    for (let c = -2; c <= 2; c++) addSolid(c * 2.6, 0.25, -2 + r * 2.4, 1.8, 0.5, 0.7, 0x3d5a80);
+  }
+  for (const x of [-7, 7]) addKandil(x, 0);
+}
+
 function roomType(roomId) {
   const r = rooms.find(x => x.id === roomId);
   if (r) return r.type;
@@ -1636,11 +1758,13 @@ function isClassRoom(roomId) {
 }
 
 function buildRoom(roomId) {
+  syncArchiveUI(roomId);
   if (builtRoom === roomId) return;
   builtRoom = roomId;
   clearDecor();
   if (isClassRoom(roomId)) { applyTheme('class'); buildClassroom(roomId); }
   else if (roomId === 'ortak-alan') { applyTheme('lounge'); buildLounge(roomId); }
+  else if (roomId === 'arsiv-salonu') { applyTheme('lounge'); buildArchive(roomId); }
   else { applyTheme('hall'); buildHall(roomId); }
 }
 
@@ -1847,41 +1971,15 @@ function applySeatColors() {
 }
 
 function updateSeatUI() {
- function updateSeatUI() {
   const show = joined && isClassRoom(myRoom) && (myRole === 'student' || myRole === 'moderator' || myRole === 'teacher');
   $('seatPanel').style.display = show ? 'block' : 'none';
   $('standBtn').style.display = mySeat ? 'block' : 'none';
   $('nearestBtn').style.display = (mySeat || myRole !== 'student') ? 'none' : 'block';
   $('seatStatus').textContent = mySeat ? 'Oturuyorsun: ' + mySeat : 'Boş koltuklar (tıkla):';
 
-  const emptyIds = (myRole === 'student' ? STUDENT_SEATS : Object.keys(SEATS)).filter(id => !occupiedMap[id] && SEATS[id].role === myRole);
+  const pool = myRole === 'student' ? STUDENT_SEATS : Object.keys(SEATS);
+  const emptyIds = pool.filter(id => !occupiedMap[id] && SEATS[id].role === myRole);
   const key = emptyIds.join(',') + '|' + (mySeat || '') + '|' + myRole;
-  if (key === lastSeatKey) return;
-  lastSeatKey = key;
-
-  const list = $('seatList');
-  list.innerHTML = '';
-  if (mySeat) return;
-  if (!emptyIds.length) {
-    $('seatStatus').textContent = 'Boş koltuk yok';
-    return;
-  }
-  for (const id of emptyIds) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = id;
-    b.setAttribute('aria-label', id + ' koltuğuna otur');
-    b.addEventListener('click', () => trySit(id, true));
-    list.appendChild(b);
-  }
-}
-  $('seatPanel').style.display = show ? 'block' : 'none';
-  $('standBtn').style.display = mySeat ? 'block' : 'none';
-  $('nearestBtn').style.display = mySeat ? 'none' : 'block';
-  $('seatStatus').textContent = mySeat ? 'Oturuyorsun: ' + mySeat : 'Boş koltuklar (tıkla):';
-
-  const emptyIds = STUDENT_SEATS.filter(id => !occupiedMap[id]);
-  const key = emptyIds.join(',') + '|' + (mySeat || '');
   if (key === lastSeatKey) return;
   lastSeatKey = key;
 
@@ -2173,47 +2271,18 @@ function makeNameSprite(text, teacher) {
   return sp;
 }
 
+// Avatar: avatar.js içindeki AvatarKit ile oluşturulur. Veri yoksa role göre renk kullanılır.
 function createAvatar(p) {
-  const g = new THREE.Group();
-  const bodyCol = p.role === 'teacher' ? 0xc0392b : (p.role === 'moderator' ? 0x8e44ad : 0x2980b9);
-  const parts = {};
-
-  parts.body = mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.9, 16), bodyCol, g);
-  parts.body.position.y = 0.95;
-
-  parts.head = mesh(new THREE.SphereGeometry(0.24, 16, 16), 0xf1c27d, g);
-  parts.head.position.y = 1.5;
-
-  for (const ex of [-0.08, 0.08]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), mat(0x222222));
-    eye.position.set(ex, 1.54, -0.23);
-    g.add(eye);
+  const base = avatarData.get(p.id);
+  const data = Object.assign({}, base || {});
+  if (!base) {
+    data.shirt = p.role === 'teacher' ? '#c0392b' : (p.role === 'moderator' ? '#8e44ad' : '#2980b9');
   }
-
-  for (const side of [-1, 1]) {
-    const legPivot = new THREE.Group();
-    legPivot.position.set(side * 0.14, 0.5, 0);
-    g.add(legPivot);
-    const leg = mesh(new THREE.BoxGeometry(0.16, 0.55, 0.18), 0x2c3e50, legPivot);
-    leg.position.y = -0.275;
-    parts[side < 0 ? 'legL' : 'legR'] = legPivot;
-
-    const armPivot = new THREE.Group();
-    armPivot.position.set(side * 0.38, 1.2, 0);
-    g.add(armPivot);
-    const arm = mesh(new THREE.BoxGeometry(0.14, 0.55, 0.14), bodyCol, armPivot);
-    arm.position.y = -0.275;
-    parts[side < 0 ? 'armL' : 'armR'] = armPivot;
-  }
-
-  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffe066 }));
-  hand.position.y = 2.45;
-  hand.visible = false;
-  g.add(hand);
-
+  const av = AvatarKit.build(THREE, data);
+  const g = av.group;
   const label = p.role === 'teacher' ? p.name + ' (Eğitmen)' : (p.role === 'moderator' ? p.name + ' (Moderatör)' : p.name);
   g.add(makeNameSprite(label, p.role !== 'student'));
-  g.userData = { parts, hand, walk: 0 };
+  g.userData = { parts: av.parts, hand: av.hand, walk: 0 };
   scene.add(g);
   return g;
 }
@@ -2235,6 +2304,7 @@ function removeAvatar(id) {
   const av = avatars.get(id);
   if (av) {
     scene.remove(av.group);
+    disposeObject(av.group);
     avatars.delete(id);
   }
 }
@@ -2885,8 +2955,19 @@ function onState(list) {
   if ($('teacherModal').style.display === 'flex') renderKickList();
 }
 
+// Sunucudan gelen avatar verisi: zaten oluşturulmuş bir karakterse yeniden kurulur
+function onAvatarData({ id, avatar }) {
+  avatarData.set(id, avatar);
+  if (!avatars.has(id)) return;
+  const p = lastPlayers.find(q => q.id === id);
+  if (!p || p.id === socket.id) return;
+  removeAvatar(id);
+  upsertAvatar(p);
+}
+
 function onPlayerLeft(id) {
   removeAvatar(id);
+  avatarData.delete(id);
   closePeer(id);
   if (id === knownTeacherId) {
     knownTeacherId = null;
@@ -2961,6 +3042,7 @@ function connectSocket() {
   });
 
   socket.on('state', onState);
+  socket.on('avatar', onAvatarData);
   socket.on('player-left', onPlayerLeft);
 
   socket.on('chat', m => addChat(m.name, m.text, m.role === 'teacher' ? 'teacher' : (m.role === 'moderator' ? 'moderator' : 'student')));
