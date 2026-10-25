@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eğitmen Panosu</title>
+<style>
+  :root {
+    --bg: #0b0d18; --card: #14172a; --line: #262b4a; --text: #eef1ff; --muted: #9aa3c7;
+    --acc: #4cc9f0; --acc2: #7b61ff; --ok: #2ecc71; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", Arial, sans-serif; min-height: 100vh; }
+  header {
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    padding: 14px 18px; background: #11142a; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .who { color: var(--muted); font-size: 13px; }
+  main { padding: 16px; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .kpi .v { font-size: 28px; font-weight: 700; }
+  .kpi .l { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: #ff9e9e; font-size: 13px; min-height: 18px; }
+  .btn {
+    background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; border: none; border-radius: 10px;
+    padding: 9px 14px; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  .btn.ghost { background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line); }
+  select, input {
+    background: #1b2040; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font-size: 14px;
+  }
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 170px; padding-top: 6px; }
+  .bar { flex: 1; min-width: 4px; background: linear-gradient(to top, var(--acc2), var(--acc)); border-radius: 5px 5px 0 0; }
+  .axis { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .pbar { height: 8px; background: #23284a; border-radius: 4px; overflow: hidden; min-width: 120px; }
+  .pbar i { display: block; height: 100%; background: var(--ok); }
+  .row { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  #login {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 30% 20%, #2c2f6b, #0a0c18 70%); z-index: 10;
+  }
+  #login form { width: 320px; max-width: 92%; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+  #login h2 { margin: 0 0 4px; font-size: 20px; text-align: center; }
+  #app { display: none; }
+  @media (max-width: 600px) { .kpi .v { font-size: 22px; } th, td { padding: 7px 4px; font-size: 13px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Eğitmen Panosu</h1>
+  <div class="toolbar">
+    <span class="who" id="who"></span>
+    <select id="range" aria-label="Zaman aralığı">
+      <option value="7">Son 7 gün</option>
+      <option value="30" selected>Son 30 gün</option>
+      <option value="90">Son 90 gün</option>
+      <option value="365">Son 1 yıl</option>
+    </select>
+    <button class="btn ghost" id="csv" type="button">CSV indir</button>
+    <button class="btn ghost" id="logout" type="button">Çıkış</button>
+  </div>
+</header>
+
+<div id="login">
+  <form id="loginForm">
+    <h2>Eğitmen Girişi</h2>
+    <input id="user" placeholder="Kullanıcı adı" autocomplete="username" required>
+    <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" required>
+    <button class="btn" type="submit">Giriş yap</button>
+    <div class="err" id="loginMsg"></div>
+  </form>
+</div>
+
+<main id="app">
+  <div class="err" id="err"></div>
+
+  <section class="grid">
+    <div class="card kpi"><div class="v" id="kSessions">0</div><div class="l">Toplam ders oturumu</div></div>
+    <div class="card kpi"><div class="v" id="kAvg">0</div><div class="l">Oturum başına ortalama katılım</div></div>
+    <div class="card kpi"><div class="v" id="kActive">0 / 0</div><div class="l">En az bir kez katılan öğrenci</div></div>
+    <div class="card kpi"><div class="v" id="kRate">0%</div><div class="l">Katılım oranı</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Günlük katılım</h2>
+    <div class="bars" id="bars"></div>
+    <div class="axis" id="axis"></div>
+    <div class="muted" id="dailyEmpty" style="display:none;padding-top:10px">Bu aralıkta yoklama kaydı yok.</div>
+  </section>
+
+  <section class="card">
+    <h2>Odalara göre</h2>
+    <div id="rooms"></div>
+  </section>
+
+  <section class="card">
+    <h2>Öğrenciler</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr><th>Ad</th><th>Katılım</th><th>Oran</th><th>Son katılım</th></tr>
+        </thead>
+        <tbody id="students"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const TOKEN_KEY = 'sanal_token';
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem(TOKEN_KEY);
+
+function fmtDay(s) { return s.split('-').reverse().join('.'); }
+
+function td(text) {
+  const c = document.createElement('td');
+  c.textContent = text;
+  return c;
+}
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(d.error || 'Hata (' + res.status + ')');
+    e.status = res.status;
+    throw e;
+  }
+  return d;
+}
+
+function showLogin(msg) {
+  $('login').style.display = 'flex';
+  $('app').style.display = 'none';
+  $('loginMsg').textContent = msg || '';
+}
+
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('loginMsg').textContent = '';
+  try {
+    const d = await api('/api/login', {
+      method: 'POST',
+      body: { username: $('user').value.trim(), password: $('pass').value }
+    });
+    if (!(d.user.role === 'teacher' || d.user.isAdmin)) {
+      $('loginMsg').textContent = 'Bu panel yalnızca eğitmen ve yönetici hesaplarına açık.';
+      return;
+    }
+    token = d.token;
+    localStorage.setItem(TOKEN_KEY, token);
+    load();
+  } catch (err) {
+    $('loginMsg').textContent = err.message;
+  }
+});
+
+function render(s) {
+  const t = s.totals;
+  $('kSessions').textContent = t.sessions;
+  $('kAvg').textContent = t.avgPerSession.toFixed(1);
+  $('kActive').textContent = t.activeStudents + ' / ' + t.totalStudents;
+  $('kRate').textContent = Math.round(t.participationRate * 100) + '%';
+
+  const bars = $('bars');
+  bars.textContent = '';
+  if (!s.daily.length) {
+    $('dailyEmpty').style.display = 'block';
+  } else {
+    $('dailyEmpty').style.display = 'none';
+    const max = Math.max(1, ...s.daily.map(d => d.count));
+    for (const d of s.daily) {
+      const b = document.createElement('div');
+      b.className = 'bar';
+      b.style.height = Math.max(4, d.count / max * 100) + '%';
+      b.title = fmtDay(d.day) + ': ' + d.count + ' yoklama, ' + d.people + ' kişi';
+      bars.appendChild(b);
+    }
+  }
+  $('axis').textContent = s.daily.length
+    ? fmtDay(s.daily[0].day) + '  →  ' + fmtDay(s.daily[s.daily.length - 1].day)
+    : '';
+
+  const rooms = $('rooms');
+  rooms.textContent = '';
+  if (!s.rooms.length) rooms.textContent = 'Bu aralıkta yoklama kaydı yok.';
+  for (const r of s.rooms) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.textContent = r.name + ' — ' + r.count + ' katılım';
+    rooms.appendChild(row);
+  }
+
+  const tb = $('students');
+  tb.textContent = '';
+  if (!s.students.length) {
+    const tr = document.createElement('tr');
+    const c = td('Kayıtlı öğrenci yok.');
+    c.colSpan = 4;
+    tr.appendChild(c);
+    tb.appendChild(tr);
+  }
+  for (const st of s.students) {
+    const pct = t.sessions ? Math.round(st.count / t.sessions * 100) : 0;
+    const tr = document.createElement('tr');
+    tr.appendChild(td(st.name));
+    tr.appendChild(td(st.count + ' / ' + t.sessions));
+    const bar = document.createElement('td');
+    const track = document.createElement('div');
+    track.className = 'pbar';
+    const fill = document.createElement('i');
+    fill.style.width = pct + '%';
+    track.appendChild(fill);
+    bar.appendChild(track);
+    tr.appendChild(bar);
+    tr.appendChild(td(st.lastDay ? fmtDay(st.lastDay) : '—'));
+    tb.appendChild(tr);
+  }
+}
+
+async function load() {
+  if (!token) return showLogin();
+  $('err').textContent = '';
+  try {
+    const me = await api('/api/me');
+    $('who').textContent = me.user.displayName;
+    const s = await api('/api/dashboard/summary?days=' + $('range').value);
+    render(s);
+    $('login').style.display = 'none';
+    $('app').style.display = 'block';
+  } catch (err) {
+    if (err.status === 401 || err.status === 403) {
+      token = null;
+      localStorage.removeItem(TOKEN_KEY);
+      return showLogin(err.status === 401 ? 'Oturum süresi doldu, yeniden giriş yap.' : err.message);
+    }
+    $('err').textContent = err.message;
+  }
+}
+
+$('range').addEventListener('change', load);
+
+$('csv').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/dashboard/export.csv?days=' + $('range').value, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (!res.ok) throw new Error('Dışa aktarılamadı.');
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'katilim.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (err) {
+    $('err').textContent = err.message;
+  }
+});
+
+$('logout').addEventListener('click', async () => {
+  try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
+  token = null;
+  localStorage.removeItem(TOKEN_KEY);
+  showLogin();
+});
+
+if (token) load(); else showLogin();
+</script>
+</body>
+</html>
