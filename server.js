@@ -210,7 +210,7 @@ if (userCount === 0) {
   db.prepare(
     'INSERT INTO users (username, display_name, password_hash, role, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)'
   ).run('admin', 'Yönetici', hashPassword(pw), 'teacher', 1, new Date().toISOString());
-  console.log('UYARI: İlk yönetici oluşturuldu. Kullanıcı: admin  Şifre: ' + pw + '  (Lütfen hemen değiştir.)');
+  console.log('UYARI: İlk yönetici oluşturuldu. Kullanıcı: admin (şifre ADMIN_PASSWORD değişkeninden). Lütfen hemen değiştir.');
 }
 
 // ---------- Yedekleme ----------
@@ -259,7 +259,8 @@ const ROOMS = {
   'sinif-2':      { name: 'Medine Sınıfı', type: 'class', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
   'ortak-alan':   { name: 'Ortak Alan', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
   'etkinlik':     { name: 'Etkinlik Salonu', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
-  'arsiv-salonu': { name: 'Eğitim Arşivi', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null }
+  'arsiv-salonu': { name: 'Eğitim Arşivi', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null },
+  'bedesten':     { name: 'Bedesten', type: 'common', teacherId: null, announce: null, timerEnd: 0, roll: null, poll: null, rec: null }
 };
 
 function roomExists(id) {
@@ -466,7 +467,7 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy',
     "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; " +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; " +
     "frame-src https://www.youtube-nocookie.com https://www.youtube.com; " +
     "connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
   next();
@@ -681,6 +682,7 @@ app.delete('/api/admin/recordings/:id', auth, adminOnly, (req, res) => {
   res.json({ ok: true });
 });
 require('./dashboard-api')(app, db, auth, id => (ROOMS[id] ? ROOMS[id].name : id));
+require('./brands-api')(app, db, auth, adminOnly, clean);
 // ---------- Socket.IO (canlı sınıf) ----------
 const server = http.createServer(app);
 const io = new Server(server);

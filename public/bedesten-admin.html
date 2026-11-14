@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bedesten Yönetimi</title>
+<style>
+  :root { --bg:#0b0d18; --card:#14172a; --line:#262b4a; --text:#eef1ff; --muted:#9aa3c7; --acc:#4cc9f0; --acc2:#7b61ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:12px 16px; background:#11142a; border-bottom:1px solid var(--line); }
+  header a { color:#9fd8ff; text-decoration:none; font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:14px; display:flex; flex-direction:column; gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .card h2 { margin:0 0 10px; font-size:16px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .row > * { flex:1 1 140px; }
+  input, select, textarea { width:100%; background:#1b2040; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:9px; font-size:14px; font-family:inherit; }
+  input[type=color] { padding:2px; height:38px; }
+  .btn { background:linear-gradient(135deg,var(--acc2),var(--acc)); color:#fff; border:none; border-radius:9px; padding:9px 12px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.ghost { background:rgba(255,255,255,.08); border:1px solid var(--line); }
+  .btn.danger { background:#ff6b6b; }
+  .btn.small { padding:5px 9px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--muted); font-size:12px; }
+  .tablewrap { overflow-x:auto; }
+  .muted { color:var(--muted); font-size:13px; }
+  .msg { color:#ff9e9e; min-height:18px; font-size:13px; }
+  .msg.ok { color:#8ef0b5; }
+  .slotgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(64px,1fr)); gap:5px; margin-top:8px; }
+  .slot { padding:7px 4px; border-radius:8px; text-align:center; font-size:12px; background:#1b2040; border:1px solid var(--line); }
+  .slot.full { background:#1f4e9c; }
+  .slot.corner { border-color:#d9a521; }
+  #gate { padding:40px; text-align:center; color:var(--muted); }
+</style>
+</head>
+<body>
+<header><strong>Bedesten Yönetimi</strong><div><a href="/admin.html">Yönetim paneli</a> · <a href="/">Sınıfa dön</a></div></header>
+<div id="gate">Yönetici olarak giriş yapmış olmalısın. Önce ana sayfadan giriş yap.</div>
+<main id="app" style="display:none">
+  <div class="msg" id="msg"></div>
+
+  <section class="card">
+    <h2>Vitrin doluluk</h2>
+    <div class="muted">K1–K4 köşe vitrinleri (büyük, ayrı fiyat, sarı çerçeve). L ve R yan cepheler, F giriş cephesi, B taç kapının iki yanı.</div>
+    <div class="slotgrid" id="slots"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="brandFormTitle">Yeni marka</h2>
+    <form id="brandForm">
+      <input type="hidden" id="bId">
+      <div class="row">
+        <input id="bName" placeholder="Marka adı" required maxlength="60">
+        <select id="bSlot"><option value="">Vitrin seç (boş bırakılabilir)</option></select>
+        <input id="bColor" type="color" value="#1f4e9c" title="Tabela rengi">
+      </div>
+      <div class="row">
+        <input id="bContact" placeholder="İletişim (e-posta / telefon)" maxlength="120">
+        <select id="bActive"><option value="true">Aktif</option><option value="false">Pasif</option></select>
+      </div>
+      <textarea id="bDesc" rows="2" placeholder="Kısa açıklama / marka hikâyesi" maxlength="400"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" type="submit">Kaydet</button>
+        <button class="btn ghost" type="button" id="bCancel">Temizle</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Markalar</h2>
+    <div class="tablewrap">
+      <table><thead><tr><th>Ad</th><th>Vitrin</th><th>Durum</th><th>İletişim</th><th></th></tr></thead><tbody id="brands"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card" id="productCard" style="display:none">
+    <h2 id="productTitle">Ürünler</h2>
+    <form id="productForm">
+      <input type="hidden" id="pId">
+      <div class="row">
+        <input id="pName" placeholder="Ürün adı" required maxlength="80">
+        <input id="pPrice" type="number" min="0" step="0.01" placeholder="Fiyat (₺)" required>
+        <input id="pStock" type="number" min="0" step="1" placeholder="Stok" value="1">
+      </div>
+      <div class="row">
+        <input id="pImage" placeholder="Görsel adresi (https://...)" maxlength="500">
+        <select id="pActive"><option value="true">Yayında</option><option value="false">Gizli</option></select>
+      </div>
+      <textarea id="pDesc" rows="2" placeholder="Açıklama, ölçü, malzeme" maxlength="400"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" type="submit">Ürünü kaydet</button>
+        <button class="btn ghost" type="button" id="pCancel">Temizle</button>
+      </div>
+    </form>
+    <div class="tablewrap">
+      <table><thead><tr><th>Ürün</th><th>Fiyat</th><th>Stok</th><th>Durum</th><th></th></tr></thead><tbody id="products"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Sipariş talepleri</h2>
+    <div class="tablewrap">
+      <table><thead><tr><th>Tarih</th><th>Müşteri</th><th>Marka / Ürün</th><th>Adet</th><th>Durum</th></tr></thead><tbody id="orders"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const token = localStorage.getItem('sanal_token');
+const SLOT_IDS = ['K1', 'K2', 'K3', 'K4']
+  .concat(['L', 'R', 'F'].flatMap(p => [1, 2, 3, 4, 5, 6].map(n => p + n)))
+  .concat(['B1', 'B2', 'B3', 'B4']);
+const STATUS_TR = { talep: 'Talep', onaylandi: 'Onaylandı', kargoda: 'Kargoda', teslim: 'Teslim', iptal: 'İptal' };
+let brands = [], currentBrand = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Hata (' + res.status + ')');
+  return d;
+}
+function say(t, ok) { $('msg').className = 'msg' + (ok ? ' ok' : ''); $('msg').textContent = t; }
+function td(t) { const c = document.createElement('td'); c.textContent = t; return c; }
+function btn(t, cls, fn) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'btn small ' + cls; b.textContent = t;
+  b.addEventListener('click', fn);
+  return b;
+}
+function emptyRow(tb, cols, text) {
+  const tr = document.createElement('tr');
+  const c = td(text); c.colSpan = cols; c.className = 'muted';
+  tr.appendChild(c); tb.appendChild(tr);
+}
+
+function renderSlots() {
+  const used = {};
+  for (const b of brands) if (b.slot) used[b.slot] = b.name;
+  const sel = $('bSlot');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">Vitrin seç (boş bırakılabilir)</option>';
+  const grid = $('slots');
+  grid.innerHTML = '';
+  for (const s of SLOT_IDS) {
+    const d = document.createElement('div');
+    d.className = 'slot' + (used[s] ? ' full' : '') + (s[0] === 'K' ? ' corner' : '');
+    d.textContent = s;
+    d.title = used[s] || 'Boş';
+    grid.appendChild(d);
+    sel.appendChild(new Option(s + (s[0] === 'K' ? ' (köşe)' : '') + (used[s] ? ' · ' + used[s] : ''), s));
+  }
+  sel.value = keep;
+}
+
+function renderBrands() {
+  const tb = $('brands');
+  tb.innerHTML = '';
+  if (!brands.length) return emptyRow(tb, 5, 'Henüz marka yok.');
+  for (const b of brands) {
+    const tr = document.createElement('tr');
+    tr.appendChild(td(b.name));
+    tr.appendChild(td(b.slot || '—'));
+    tr.appendChild(td(b.active ? 'Aktif' : 'Pasif'));
+    tr.appendChild(td(b.contact || ''));
+    const c = document.createElement('td');
+    c.appendChild(btn('Ürünler', '', () => showProducts(b)));
+    c.appendChild(document.createTextNode(' '));
+    c.appendChild(btn('Düzenle', 'ghost', () => editBrand(b)));
+    c.appendChild(document.createTextNode(' '));
+    c.appendChild(btn('Sil', 'danger', async () => {
+      if (!confirm(b.name + ' ve tüm ürünleri silinsin mi?')) return;
+      try { await api('/api/admin/brands/' + b.id, { method: 'DELETE' }); load(); } catch (e) { say(e.message); }
+    }));
+    tr.appendChild(c);
+    tb.appendChild(tr);
+  }
+}
+
+function editBrand(b) {
+  $('brandFormTitle').textContent = 'Markayı düzenle: ' + b.name;
+  $('bId').value = b.id; $('bName').value = b.name; $('bSlot').value = b.slot; $('bColor').value = b.color;
+  $('bContact').value = b.contact; $('bActive').value = String(b.active); $('bDesc').value = b.description;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('bCancel').addEventListener('click', () => {
+  $('brandForm').reset(); $('bId').value = ''; $('brandFormTitle').textContent = 'Yeni marka';
+});
+$('brandForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {
+    name: $('bName').value, slot: $('bSlot').value || null, color: $('bColor').value,
+    contact: $('bContact').value, active: $('bActive').value === 'true', description: $('bDesc').value
+  };
+  try {
+    if ($('bId').value) await api('/api/admin/brands/' + $('bId').value, { method: 'PUT', body });
+    else await api('/api/admin/brands', { method: 'POST', body });
+    say('Marka kaydedildi.', true);
+    $('bCancel').click();
+    load();
+  } catch (err) { say(err.message); }
+});
+
+async function showProducts(b) {
+  currentBrand = b;
+  $('productCard').style.display = 'block';
+  $('productTitle').textContent = 'Ürünler · ' + b.name;
+  $('pCancel').click();
+  const tb = $('products');
+  tb.innerHTML = '';
+  try {
+    const list = await api('/api/admin/brands/' + b.id + '/products');
+    if (!list.length) emptyRow(tb, 5, 'Henüz ürün yok.');
+    for (const p of list) {
+      const tr = document.createElement('tr');
+      tr.appendChild(td(p.name));
+      tr.appendChild(td(p.price.toLocaleString('tr-TR') + ' ₺'));
+      tr.appendChild(td(p.stock));
+      tr.appendChild(td(p.active ? 'Yayında' : 'Gizli'));
+      const c = document.createElement('td');
+      c.appendChild(btn('Düzenle', 'ghost', () => {
+        $('pId').value = p.id; $('pName').value = p.name; $('pPrice').value = p.price; $('pStock').value = p.stock;
+        $('pImage').value = p.imageUrl; $('pActive').value = String(p.active); $('pDesc').value = p.description;
+      }));
+      c.appendChild(document.createTextNode(' '));
+      c.appendChild(btn('Sil', 'danger', async () => {
+        if (!confirm(p.name + ' silinsin mi?')) return;
+        try { await api('/api/admin/products/' + p.id, { method: 'DELETE' }); showProducts(b); } catch (e) { say(e.message); }
+      }));
+      tr.appendChild(c);
+      tb.appendChild(tr);
+    }
+  } catch (e) { say(e.message); }
+  $('productCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('pCancel').addEventListener('click', () => { $('productForm').reset(); $('pId').value = ''; $('pStock').value = 1; });
+$('productForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentBrand) return;
+  const body = {
+    name: $('pName').value, price: Number($('pPrice').value), stock: Number($('pStock').value),
+    imageUrl: $('pImage').value, active: $('pActive').value === 'true', description: $('pDesc').value
+  };
+  try {
+    if ($('pId').value) await api('/api/admin/products/' + $('pId').value, { method: 'PUT', body });
+    else await api('/api/admin/brands/' + currentBrand.id + '/products', { method: 'POST', body });
+    say('Ürün kaydedildi.', true);
+    showProducts(currentBrand);
+  } catch (err) { say(err.message); }
+});
+
+async function loadOrders() {
+  const tb = $('orders');
+  tb.innerHTML = '';
+  try {
+    const list = await api('/api/admin/orders');
+    if (!list.length) return emptyRow(tb, 5, 'Sipariş talebi yok.');
+    for (const o of list) {
+      const tr = document.createElement('tr');
+      tr.appendChild(td(new Date(o.createdAt).toLocaleString('tr-TR')));
+      tr.appendChild(td(o.user + ' (' + o.username + ')'));
+      tr.appendChild(td(o.brand + ' / ' + o.product + (o.note ? ' — ' + o.note : '')));
+      tr.appendChild(td(o.qty + ' × ' + o.price.toLocaleString('tr-TR') + ' ₺'));
+      const c = document.createElement('td');
+      const sel = document.createElement('select');
+      for (const k in STATUS_TR) sel.appendChild(new Option(STATUS_TR[k], k));
+      sel.value = o.status;
+      sel.addEventListener('change', async () => {
+        try { await api('/api/admin/orders/' + o.id + '/status', { method: 'POST', body: { status: sel.value } }); say('Durum güncellendi.', true); }
+        catch (e) { say(e.message); }
+      });
+      c.appendChild(sel);
+      tr.appendChild(c);
+      tb.appendChild(tr);
+    }
+  } catch (e) { say(e.message); }
+}
+
+async function load() {
+  try {
+    const me = await api('/api/me');
+    if (!me.user.isAdmin) throw new Error('Bu sayfa yalnızca yöneticiler içindir.');
+    $('gate').style.display = 'none';
+    $('app').style.display = 'flex';
+    brands = await api('/api/admin/brands');
+    renderSlots();
+    renderBrands();
+    loadOrders();
+  } catch (e) {
+    $('gate').textContent = e.message + ' Ana sayfadan yönetici olarak giriş yap.';
+  }
+}
+if (token) load();
+</script>
+</body>
+</html>
