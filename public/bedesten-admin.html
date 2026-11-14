@@ -188,6 +188,8 @@ function renderBrands() {
     const c = document.createElement('td');
     c.appendChild(btn('Ürünler', '', () => showProducts(b)));
     c.appendChild(document.createTextNode(' '));
+    c.appendChild(btn('Giriş hesabı', 'ghost', () => showAccounts(b, true)));
+    c.appendChild(document.createTextNode(' '));
     c.appendChild(btn('Düzenle', 'ghost', () => editBrand(b)));
     c.appendChild(document.createTextNode(' '));
     c.appendChild(btn('Sil', 'danger', async () => {
@@ -257,8 +259,10 @@ async function showProducts(b) {
   $('productCard').scrollIntoView({ behavior: 'smooth' });
 }
 
-async function showAccounts(b) {
+async function showAccounts(b, jump) {
+  currentBrand = b;
   $('accountCard').style.display = 'block';
+  if (jump) $('accountCard').scrollIntoView({ behavior: 'smooth' });
   $('accountTitle').textContent = 'Marka hesapları · ' + b.name;
   const tb = $('accounts');
   tb.innerHTML = '';
