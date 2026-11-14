@@ -682,7 +682,7 @@ app.delete('/api/admin/recordings/:id', auth, adminOnly, (req, res) => {
   res.json({ ok: true });
 });
 require('./dashboard-api')(app, db, auth, id => (ROOMS[id] ? ROOMS[id].name : id));
-require('./brands-api')(app, db, auth, adminOnly, clean, hashPassword);
+require('./brands-api')(app, db, auth, adminOnly, clean, hashPassword, verifyPassword);
 // ---------- Socket.IO (canlı sınıf) ----------
 const server = http.createServer(app);
 const io = new Server(server);

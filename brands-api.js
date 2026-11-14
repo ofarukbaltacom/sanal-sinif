@@ -1,6 +1,6 @@
 // Bedesten API: markalar, vitrin atamaları, ürünler ve sipariş talepleri.
-// server.js tarafından: require('./brands-api')(app, db, auth, adminOnly, clean, hashPassword);
-module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPassword) {
+// server.js tarafından: require('./brands-api')(app, db, auth, adminOnly, clean, hashPassword, verifyPassword);
+module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPassword, verifyPassword) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS brands (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,6 +37,14 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPa
       brand_id INTEGER NOT NULL
     );
   `);
+
+  // Eski veritabanlarına durum değişiklik zamanı sütunu ekle (varsa hata verir, yok sayılır)
+  try { db.exec('ALTER TABLE orders ADD COLUMN status_at TEXT'); } catch (e) {}
+
+  // Kolay hatırlanan kısa adresler
+  app.get('/marka', (req, res) => res.redirect('/marka.html'));
+  app.get('/siparisler', (req, res) => res.redirect('/siparisler.html'));
+  app.get('/bedesten-yonetim', (req, res) => res.redirect('/bedesten-admin.html'));
 
   const SLOT_RE = /^(K[1-4]|[LRF][1-6]|B[1-4])$/;
   const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -184,14 +192,38 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPa
     res.json({ ok: true });
   });
 
+  // Bildirim rozeti: giriş yapan kişi yönetici ya da marka ise bekleyen sipariş sayılarını döner
+  app.get('/api/bedesten/inbox', auth, (req, res) => {
+    const out = { admin: null, brand: null };
+    if (req.user.isAdmin) {
+      const c = db.prepare(`SELECT
+          SUM(CASE WHEN status = 'talep' THEN 1 ELSE 0 END) AS n,
+          SUM(CASE WHEN status IN ('onaylandi','kargoda') THEN 1 ELSE 0 END) AS o
+        FROM orders`).get();
+      out.admin = { newCount: c.n || 0, openCount: c.o || 0 };
+    }
+    const bu = db.prepare('SELECT b.id, b.name, b.slot FROM brand_users x JOIN brands b ON b.id = x.brand_id WHERE x.user_id = ?').get(req.user.id);
+    if (bu) {
+      const c = db.prepare(`SELECT
+          SUM(CASE WHEN o.status = 'talep' THEN 1 ELSE 0 END) AS n,
+          SUM(CASE WHEN o.status IN ('onaylandi','kargoda') THEN 1 ELSE 0 END) AS o
+        FROM orders o JOIN products p ON p.id = o.product_id WHERE p.brand_id = ?`).get(bu.id);
+      out.brand = { id: bu.id, name: bu.name, slot: bu.slot || '', newCount: c.n || 0, openCount: c.o || 0 };
+    }
+    res.json(out);
+  });
+
   app.get('/api/admin/orders', auth, adminOnly, (req, res) => {
     const rows = db.prepare(`
-      SELECT o.*, p.name AS product_name, p.price, b.name AS brand_name, u.display_name AS user_name, u.username
+      SELECT o.*, p.name AS product_name, p.price, p.stock, b.id AS brand_id, b.name AS brand_name, b.slot AS brand_slot,
+        b.contact AS brand_contact, u.display_name AS user_name, u.username
       FROM orders o JOIN products p ON p.id = o.product_id JOIN brands b ON b.id = p.brand_id JOIN users u ON u.id = o.user_id
-      ORDER BY o.id DESC LIMIT 500`).all();
+      ORDER BY o.id DESC LIMIT 2000`).all();
     res.json(rows.map(r => ({
-      id: r.id, product: r.product_name, brand: r.brand_name, user: r.user_name, username: r.username,
-      qty: r.qty, price: r.price, status: r.status, note: r.note || '', createdAt: r.created_at
+      id: r.id, product: r.product_name, productId: r.product_id, stock: r.stock,
+      brand: r.brand_name, brandId: r.brand_id, brandSlot: r.brand_slot || '', brandContact: r.brand_contact || '',
+      user: r.user_name, username: r.username,
+      qty: r.qty, price: r.price, status: r.status, note: r.note || '', createdAt: r.created_at, statusAt: r.status_at || r.created_at
     })));
   });
 
@@ -219,7 +251,7 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPa
       } else if (wasHeld && !willHold) {
         db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(o.qty, o.product_id);
       }
-      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
+      db.prepare('UPDATE orders SET status = ?, status_at = ? WHERE id = ?').run(status, new Date().toISOString(), orderId);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -279,18 +311,31 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPa
 
   app.get('/api/brand/orders', auth, brandOnly, (req, res) => {
     const rows = db.prepare(`
-      SELECT o.*, p.name AS product_name, p.price, u.display_name AS user_name, u.username
+      SELECT o.*, p.name AS product_name, p.price, p.stock, u.display_name AS user_name, u.username
       FROM orders o JOIN products p ON p.id = o.product_id JOIN users u ON u.id = o.user_id
-      WHERE p.brand_id = ? ORDER BY o.id DESC LIMIT 500`).all(req.brandId);
+      WHERE p.brand_id = ? ORDER BY o.id DESC LIMIT 1000`).all(req.brandId);
     res.json(rows.map(r => ({
-      id: r.id, product: r.product_name, user: r.user_name, username: r.username,
-      qty: r.qty, price: r.price, status: r.status, note: r.note || '', createdAt: r.created_at
+      id: r.id, product: r.product_name, stock: r.stock, user: r.user_name, username: r.username,
+      qty: r.qty, price: r.price, status: r.status, note: r.note || '', createdAt: r.created_at, statusAt: r.status_at || r.created_at
     })));
   });
 
   app.post('/api/brand/orders/:id/status', auth, brandOnly, (req, res) => {
     const r = setOrderStatus(Number(req.params.id), String((req.body || {}).status || ''), req.brandId);
     if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true });
+  });
+
+  // Marka kendi şifresini değiştirir (mevcut şifre gerekir); diğer oturumları kapatılır
+  app.post('/api/brand/password', auth, brandOnly, (req, res) => {
+    const b = req.body || {};
+    const current = String(b.current || '');
+    const next = String(b.next || '');
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!row || !verifyPassword(current, row.password_hash)) return res.status(400).json({ error: 'Mevcut şifre hatalı.' });
+    if (next.length < 8) return res.status(400).json({ error: 'Yeni şifre en az 8 karakter olmalı.' });
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), req.user.id);
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, req.token);
     res.json({ ok: true });
   });
 

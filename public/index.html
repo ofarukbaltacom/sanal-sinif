@@ -207,6 +207,7 @@
   <div class="row"><button id="logoutBtn" class="btn ghost" type="button">Çıkış</button></div>
   <a id="brandLink" href="/marka.html" class="btn ghost" style="display:none;margin-top:8px;text-align:center;text-decoration:none">🏷 Marka Paneli</a>
   <a id="adminLink" href="/admin.html" class="btn ghost" style="display:none;margin-top:8px;text-align:center;text-decoration:none">⚙ Yönetim Paneli</a>
+  <a id="orderLink" href="/siparisler.html" class="btn ghost" style="display:none;margin-top:8px;text-align:center;text-decoration:none">🛒 Sipariş Merkezi</a>
   <div class="row" id="adminCapRow" style="display:none">
     <button id="adminShotBtn" class="btn ghost" type="button">📸 Ekran görüntüsü</button>
     <button id="adminRecTop" class="btn ghost" type="button">⏺ Ekran kaydı</button>
@@ -2923,6 +2924,7 @@ function enterRoom(p, first) {
     setWatermark(me.displayName);
     $('adminLink').style.display = me.isAdmin ? 'block' : 'none';
     $('brandLink').style.display = me.role === 'brand' ? 'block' : 'none';
+    $('orderLink').style.display = me.isAdmin ? 'block' : 'none';
     setTimeout(() => $('info').classList.add('faded'), 12000);
     if (!localStorage.getItem(TOUR_KEY)) {
       localStorage.setItem(TOUR_KEY, '1');
