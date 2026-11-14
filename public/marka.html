@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marka Paneli · Bedesten</title>
+<style>
+  :root { --bg:#0b0d18; --card:#14172a; --line:#262b4a; --text:#eef1ff; --muted:#9aa3c7; --acc:#4cc9f0; --acc2:#7b61ff; --gold:#d9a521; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Segoe UI",Arial,sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:12px 16px; background:#11142a; border-bottom:1px solid var(--line); }
+  header .who { color:var(--muted); font-size:13px; }
+  header a { color:#9fd8ff; text-decoration:none; font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:14px; display:none; flex-direction:column; gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .card h2 { margin:0 0 10px; font-size:16px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; }
+  .kpi .v { font-size:24px; font-weight:700; }
+  .kpi .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .row > * { flex:1 1 140px; }
+  input, select, textarea { width:100%; background:#1b2040; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:9px; font-size:14px; font-family:inherit; }
+  .btn { background:linear-gradient(135deg,var(--acc2),var(--acc)); color:#fff; border:none; border-radius:9px; padding:9px 12px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.ghost { background:rgba(255,255,255,.08); border:1px solid var(--line); }
+  .btn.small { padding:5px 9px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--muted); font-size:12px; }
+  .tablewrap { overflow-x:auto; }
+  .muted { color:var(--muted); font-size:13px; }
+  .msg { color:#ff9e9e; min-height:18px; font-size:13px; }
+  .msg.ok { color:#8ef0b5; }
+  .slotTag { display:inline-block; padding:2px 8px; border-radius:99px; background:#1f4e9c; font-size:12px; margin-left:6px; }
+  .slotTag.corner { background:var(--gold); color:#111; }
+  #login { min-height:100vh; display:none; align-items:center; justify-content:center; background:radial-gradient(circle at 30% 20%, #2c2f6b, #0a0c18 70%); }
+  #login form { width:330px; max-width:92%; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px; display:flex; flex-direction:column; gap:10px; }
+  #login h1 { margin:0; font-size:20px; text-align:center; }
+  #login .brand { text-align:center; font-size:11px; letter-spacing:.25em; color:var(--acc); }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form id="loginForm">
+    <div class="brand">BEDESTEN</div>
+    <h1>Marka Girişi</h1>
+    <input id="user" placeholder="Kullanıcı adı" autocomplete="username" required>
+    <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" required>
+    <button class="btn" type="submit">Giriş yap</button>
+    <div class="msg" id="loginMsg"></div>
+  </form>
+</div>
+
+<header id="top" style="display:none">
+  <div><strong id="brandName">Marka Paneli</strong><span id="slotTag"></span></div>
+  <div class="who"><span id="who"></span> · <a href="/">Bedesten'e git</a> · <a href="#" id="logout">Çıkış</a></div>
+</header>
+
+<main id="app">
+  <div class="msg" id="msg"></div>
+
+  <section class="kpis">
+    <div class="kpi"><div class="v" id="kNew">0</div><div class="l">Yeni talep</div></div>
+    <div class="kpi"><div class="v" id="kOpen">0</div><div class="l">Hazırlanan / kargoda</div></div>
+    <div class="kpi"><div class="v" id="kDone">0</div><div class="l">Teslim edilen</div></div>
+    <div class="kpi"><div class="v" id="kRevenue">0 ₺</div><div class="l">Teslim edilen tutar</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Sipariş talepleri</h2>
+    <div class="muted" style="margin-bottom:8px">Bir talebi <b>Onaylandı</b> yaptığında stok otomatik düşer. Onaylanmış bir talebi iptal edersen stok geri eklenir.</div>
+    <div class="tablewrap">
+      <table><thead><tr><th>Tarih</th><th>Müşteri</th><th>Ürün</th><th>Adet / Tutar</th><th>Not</th><th>Durum</th></tr></thead><tbody id="orders"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 id="productFormTitle">Yeni ürün</h2>
+    <form id="productForm">
+      <input type="hidden" id="pId">
+      <div class="row">
+        <input id="pName" placeholder="Ürün adı" required maxlength="80">
+        <input id="pPrice" type="number" min="0" step="0.01" placeholder="Fiyat (₺)" required>
+        <input id="pStock" type="number" min="0" step="1" placeholder="Stok" value="1">
+      </div>
+      <div class="row">
+        <input id="pImage" placeholder="Görsel adresi (https://...)" maxlength="500">
+        <select id="pActive"><option value="true">Yayında</option><option value="false">Gizli</option></select>
+      </div>
+      <textarea id="pDesc" rows="2" placeholder="Açıklama, ölçü, malzeme, üretim hikâyesi" maxlength="400"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" type="submit">Ürünü kaydet</button>
+        <button class="btn ghost" type="button" id="pCancel">Temizle</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Ürünlerim</h2>
+    <div class="tablewrap">
+      <table><thead><tr><th>Ürün</th><th>Fiyat</th><th>Stok</th><th>Durum</th><th></th></tr></thead><tbody id="products"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<script>
+const TOKEN_KEY = 'sanal_token';
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem(TOKEN_KEY);
+const STATUS_TR = { talep: 'Talep', onaylandi: 'Onaylandı', kargoda: 'Kargoda', teslim: 'Teslim', iptal: 'İptal' };
+
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(d.error || 'Hata (' + res.status + ')'); e.status = res.status; throw e; }
+  return d;
+}
+function say(t, ok) { $('msg').className = 'msg' + (ok ? ' ok' : ''); $('msg').textContent = t; }
+function td(t) { const c = document.createElement('td'); c.textContent = t; return c; }
+function money(n) { return Number(n).toLocaleString('tr-TR') + ' ₺'; }
+function emptyRow(tb, cols, text) {
+  const tr = document.createElement('tr');
+  const c = td(text); c.colSpan = cols; c.className = 'muted';
+  tr.appendChild(c); tb.appendChild(tr);
+}
+
+function showLogin(text) {
+  $('login').style.display = 'flex';
+  $('top').style.display = 'none';
+  $('app').style.display = 'none';
+  $('loginMsg').textContent = text || '';
+}
+
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('loginMsg').textContent = '';
+  try {
+    const d = await api('/api/login', { method: 'POST', body: { username: $('user').value.trim(), password: $('pass').value } });
+    token = d.token;
+    localStorage.setItem(TOKEN_KEY, token);
+    $('pass').value = '';
+    load();
+  } catch (err) { $('loginMsg').textContent = err.message; }
+});
+
+$('logout').addEventListener('click', async e => {
+  e.preventDefault();
+  try { await api('/api/logout', { method: 'POST' }); } catch (err) {}
+  token = null;
+  localStorage.removeItem(TOKEN_KEY);
+  showLogin();
+});
+
+async function loadOrders() {
+  const tb = $('orders');
+  tb.innerHTML = '';
+  const list = await api('/api/brand/orders');
+  let nNew = 0, nOpen = 0, nDone = 0, revenue = 0;
+  for (const o of list) {
+    if (o.status === 'talep') nNew++;
+    else if (o.status === 'onaylandi' || o.status === 'kargoda') nOpen++;
+    else if (o.status === 'teslim') { nDone++; revenue += o.qty * o.price; }
+  }
+  $('kNew').textContent = nNew; $('kOpen').textContent = nOpen; $('kDone').textContent = nDone; $('kRevenue').textContent = money(revenue);
+  if (!list.length) return emptyRow(tb, 6, 'Henüz sipariş talebi yok.');
+  for (const o of list) {
+    const tr = document.createElement('tr');
+    tr.appendChild(td(new Date(o.createdAt).toLocaleString('tr-TR')));
+    tr.appendChild(td(o.user + ' (' + o.username + ')'));
+    tr.appendChild(td(o.product));
+    tr.appendChild(td(o.qty + ' × ' + money(o.price)));
+    tr.appendChild(td(o.note || '—'));
+    const c = document.createElement('td');
+    const sel = document.createElement('select');
+    for (const k in STATUS_TR) sel.appendChild(new Option(STATUS_TR[k], k));
+    sel.value = o.status;
+    sel.addEventListener('change', async () => {
+      try {
+        await api('/api/brand/orders/' + o.id + '/status', { method: 'POST', body: { status: sel.value } });
+        say('Durum güncellendi.', true);
+        loadOrders(); loadProducts();
+      } catch (e) { say(e.message); sel.value = o.status; }
+    });
+    c.appendChild(sel);
+    tr.appendChild(c);
+    tb.appendChild(tr);
+  }
+}
+
+async function loadProducts() {
+  const tb = $('products');
+  tb.innerHTML = '';
+  const list = await api('/api/brand/products');
+  if (!list.length) return emptyRow(tb, 5, 'Henüz ürün yok. Yukarıdaki formdan ekleyebilirsin.');
+  for (const p of list) {
+    const tr = document.createElement('tr');
+    tr.appendChild(td(p.name));
+    tr.appendChild(td(money(p.price)));
+    tr.appendChild(td(p.stock));
+    tr.appendChild(td(p.active ? 'Yayında' : 'Gizli'));
+    const c = document.createElement('td');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn small ghost'; b.textContent = 'Düzenle';
+    b.addEventListener('click', () => {
+      $('productFormTitle').textContent = 'Ürünü düzenle: ' + p.name;
+      $('pId').value = p.id; $('pName').value = p.name; $('pPrice').value = p.price; $('pStock').value = p.stock;
+      $('pImage').value = p.imageUrl; $('pActive').value = String(p.active); $('pDesc').value = p.description;
+      $('productForm').scrollIntoView({ behavior: 'smooth' });
+    });
+    c.appendChild(b);
+    tr.appendChild(c);
+    tb.appendChild(tr);
+  }
+}
+
+$('pCancel').addEventListener('click', () => {
+  $('productForm').reset(); $('pId').value = ''; $('pStock').value = 1; $('productFormTitle').textContent = 'Yeni ürün';
+});
+$('productForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {
+    name: $('pName').value, price: Number($('pPrice').value), stock: Number($('pStock').value),
+    imageUrl: $('pImage').value, active: $('pActive').value === 'true', description: $('pDesc').value
+  };
+  try {
+    if ($('pId').value) await api('/api/brand/products/' + $('pId').value, { method: 'PUT', body });
+    else await api('/api/brand/products', { method: 'POST', body });
+    say('Ürün kaydedildi.', true);
+    $('pCancel').click();
+    loadProducts();
+  } catch (err) { say(err.message); }
+});
+
+async function load() {
+  if (!token) return showLogin();
+  try {
+    const me = await api('/api/me');
+    const brand = await api('/api/brand/me');
+    $('who').textContent = me.user.displayName;
+    $('brandName').textContent = brand.name;
+    $('slotTag').innerHTML = '';
+    if (brand.slot) {
+      const t = document.createElement('span');
+      t.className = 'slotTag' + (brand.isCorner ? ' corner' : '');
+      t.textContent = 'Vitrin ' + brand.slot + (brand.isCorner ? ' · köşe' : '');
+      $('slotTag').appendChild(t);
+    }
+    $('login').style.display = 'none';
+    $('top').style.display = 'flex';
+    $('app').style.display = 'flex';
+    await Promise.all([loadOrders(), loadProducts()]);
+  } catch (err) {
+    if (err.status === 401) {
+      token = null; localStorage.removeItem(TOKEN_KEY);
+      return showLogin('Oturum süresi doldu, yeniden giriş yap.');
+    }
+    if (err.status === 403) return showLogin(err.message);
+    say(err.message);
+  }
+}
+
+load();
+setInterval(() => { if ($('app').style.display === 'flex') loadOrders().catch(() => {}); }, 60000);
+</script>
+</body>
+</html>

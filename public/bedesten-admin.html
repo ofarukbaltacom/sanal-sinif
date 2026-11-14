@@ -99,6 +99,22 @@
     </div>
   </section>
 
+  <section class="card" id="accountCard" style="display:none">
+    <h2 id="accountTitle">Marka hesapları</h2>
+    <div class="muted" style="margin-bottom:8px">Marka hesabı, /marka.html sayfasından giriş yapıp yalnızca kendi ürünlerini ve siparişlerini görür.</div>
+    <form id="accountForm">
+      <div class="row">
+        <input id="aUser" placeholder="Kullanıcı adı (ör. marka-ali)" required maxlength="30" autocomplete="off">
+        <input id="aName" placeholder="Görünen ad" required maxlength="40" autocomplete="off">
+        <input id="aPass" type="text" placeholder="Şifre (en az 8 karakter)" required minlength="8" autocomplete="new-password">
+      </div>
+      <button class="btn" type="submit">Hesap aç</button>
+    </form>
+    <div class="tablewrap" style="margin-top:8px">
+      <table><thead><tr><th>Kullanıcı adı</th><th>Görünen ad</th><th></th></tr></thead><tbody id="accounts"></tbody></table>
+    </div>
+  </section>
+
   <section class="card">
     <h2>Sipariş talepleri</h2>
     <div class="tablewrap">
@@ -237,8 +253,46 @@ async function showProducts(b) {
       tb.appendChild(tr);
     }
   } catch (e) { say(e.message); }
+  showAccounts(b);
   $('productCard').scrollIntoView({ behavior: 'smooth' });
 }
+
+async function showAccounts(b) {
+  $('accountCard').style.display = 'block';
+  $('accountTitle').textContent = 'Marka hesapları · ' + b.name;
+  const tb = $('accounts');
+  tb.innerHTML = '';
+  try {
+    const list = await api('/api/admin/brands/' + b.id + '/accounts');
+    if (!list.length) emptyRow(tb, 3, 'Bu markaya ait hesap yok.');
+    for (const a of list) {
+      const tr = document.createElement('tr');
+      tr.appendChild(td(a.username));
+      tr.appendChild(td(a.displayName));
+      const c = document.createElement('td');
+      c.appendChild(btn('Sil', 'danger', async () => {
+        if (!confirm(a.username + ' hesabı silinsin mi?')) return;
+        try { await api('/api/admin/brand-accounts/' + a.id, { method: 'DELETE' }); showAccounts(b); } catch (e) { say(e.message); }
+      }));
+      tr.appendChild(c);
+      tb.appendChild(tr);
+    }
+  } catch (e) { say(e.message); }
+}
+
+$('accountForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentBrand) return;
+  try {
+    await api('/api/admin/brands/' + currentBrand.id + '/accounts', {
+      method: 'POST',
+      body: { username: $('aUser').value.trim(), displayName: $('aName').value.trim(), password: $('aPass').value }
+    });
+    say('Marka hesabı açıldı. Kullanıcı adı ve şifreyi markaya güvenli bir yoldan ilet.', true);
+    $('accountForm').reset();
+    showAccounts(currentBrand);
+  } catch (err) { say(err.message); }
+});
 $('pCancel').addEventListener('click', () => { $('productForm').reset(); $('pId').value = ''; $('pStock').value = 1; });
 $('productForm').addEventListener('submit', async e => {
   e.preventDefault();

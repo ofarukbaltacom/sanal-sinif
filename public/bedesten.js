@@ -1,4 +1,4 @@
-// Bedesten: Buhara medresesi tarzı avlu, iki katlı kemerli cepheler, taç kapı, marka vitrinleri.
+// Bedesten: Buhara medresesi tarzı avlu, iki katlı kemerli cepheler, taç kapı, ortada fıskiye, marka vitrinleri.
 // index.html'deki global yardımcıları (decorGroup, obstacles, makeTex, patternClone, archShape,
 // makeSignTexture, starPath, seeded, SHARED, scene, floorMesh, api, openModal ...) kullanır.
 // index.html'de ana betikten SONRA yüklenmelidir.
@@ -221,27 +221,207 @@
     obstacles.push({ minX: -PORTAL_W / 2, maxX: PORTAL_W / 2, minZ: z - 1, maxZ: z + 0.5 });
   }
 
-  function tree(x, z) {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 2.2, 10), new THREE.MeshLambertMaterial({ color: 0x5b3f24 }));
-    trunk.position.set(x, 1.1, z); trunk.castShadow = true; decorGroup.add(trunk);
-    const leaf = new THREE.MeshLambertMaterial({ color: 0x5d8a3c });
-    for (const [dx, dy, dz, r] of [[0, 3.0, 0, 1.5], [0.9, 2.6, 0.4, 1.0], [-0.8, 2.7, -0.5, 1.0], [0.2, 3.7, -0.6, 0.9]]) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), leaf);
-      s.position.set(x + dx, dy, z + dz); s.castShadow = true; decorGroup.add(s);
+  // ---------- Fıskiye (Pervane Medresesi avlusundaki gibi) ----------
+  // Sekizgen taş havuz, ortada kademeli altın sarısı taş kaseler, kaselerden dökülen su perdeleri,
+  // havuzun çevresinde beyaz saksılarda bitkiler.
+  const FOUNTAIN_R = 2.5;
+  let waterTex = null, streamTex = null;
+  const fountainAnim = { water: [], streams: [] };
+
+  function drawWater(g, s) {
+    const grd = g.createLinearGradient(0, 0, s, s);
+    grd.addColorStop(0, '#5fb7c4'); grd.addColorStop(1, '#3f97a8');
+    g.fillStyle = grd; g.fillRect(0, 0, s, s);
+    const r = seeded(5);
+    g.strokeStyle = 'rgba(255,255,255,0.28)';
+    g.lineWidth = 2;
+    for (let i = 0; i < 40; i++) {
+      const x = r() * s, y = r() * s, w = 20 + r() * 50;
+      g.beginPath(); g.ellipse(x, y, w, w * 0.35, 0, 0, Math.PI * 2); g.stroke();
     }
-    obstacles.push({ minX: x - .3, maxX: x + .3, minZ: z - .3, maxZ: z + .3 });
+  }
+  function drawStream(g, s) {
+    g.clearRect(0, 0, s, s);
+    const r = seeded(9);
+    for (let i = 0; i < 60; i++) {
+      const x = r() * s, len = 20 + r() * 80, y = r() * s;
+      g.strokeStyle = 'rgba(230,248,255,' + (0.35 + r() * 0.5) + ')';
+      g.lineWidth = 1 + r() * 2;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + len); g.stroke();
+    }
   }
 
-  // Avlunun ortasında çiçekli alçak çit tarhları (vitrin önlerini kapatmaz)
-  function gardens() {
-    const hm = new THREE.MeshLambertMaterial({ color: 0x3f7a35 });
-    const fm = new THREE.MeshLambertMaterial({ color: 0xc9507a });
-    for (const [x, z, w, d] of [[-4.6, -3, 4, 0.5], [4.6, -3, 4, 0.5], [-4.6, 3, 4, 0.5], [4.6, 3, 4, 0.5]]) {
-      const h = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d), hm); h.position.set(x, 0.25, z); decorGroup.add(h);
-      const f = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), fm); f.position.set(x, 0.56, z); decorGroup.add(f);
-      obstacles.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  function octagon(R) {
+    const sh = new THREE.Shape();
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI / 8 + i * Math.PI / 4;
+      const x = Math.cos(a) * R, y = Math.sin(a) * R;
+      if (i === 0) sh.moveTo(x, y); else sh.lineTo(x, y);
+    }
+    sh.closePath();
+    return sh;
+  }
+  function octagonPath(R) {
+    const p = new THREE.Path();
+    for (let i = 7; i >= 0; i--) {
+      const a = Math.PI / 8 + i * Math.PI / 4;
+      const x = Math.cos(a) * R, y = Math.sin(a) * R;
+      if (i === 7) p.moveTo(x, y); else p.lineTo(x, y);
+    }
+    p.closePath();
+    return p;
+  }
+
+  // Kase profili (dönerek oluşturulan yüzey): geniş, sığ, kenarı kıvrık
+  function bowlGeometry(r) {
+    const pts = [
+      [0.0, -0.32], [r * 0.18, -0.32], [r * 0.32, -0.26], [r * 0.6, -0.16],
+      [r * 0.85, -0.04], [r, 0.06], [r * 1.03, 0.1], [r * 0.97, 0.12], [r * 0.9, 0.05], [0, 0.0]
+    ].map(([x, y]) => new THREE.Vector2(x, y * r * 1.2));
+    return new THREE.LatheGeometry(pts, 32);
+  }
+
+  function addWaterDisc(geo, y, x, z) {
+    const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+      map: patternClone(waterTex, 1, 1), color: 0xffffff, transparent: true, opacity: 0.88, shininess: 120, specular: 0xffffff
+    }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x || 0, y, z || 0);
+    decorGroup.add(m);
+    fountainAnim.water.push(m.material.map);
+    return m;
+  }
+
+  function addStream(rTop, rBottom, yTop, yBottom) {
+    const h = yTop - yBottom;
+    const tex = patternClone(streamTex, 6, 1);
+    const m = new THREE.Mesh(
+      new THREE.CylinderGeometry(rTop, rBottom, h, 40, 1, true),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide })
+    );
+    m.position.y = yBottom + h / 2;
+    decorGroup.add(m);
+    fountainAnim.streams.push(tex);
+  }
+
+  function fountain() {
+    if (!waterTex) {
+      waterTex = makeTex(drawWater, 256);
+      streamTex = makeTex(drawStream, 256);
+      SHARED.add(waterTex); SHARED.add(streamTex);
+    }
+    fountainAnim.water.length = 0;
+    fountainAnim.streams.length = 0;
+
+    const stone = new THREE.MeshStandardMaterial({ color: 0xd9cfb6, roughness: 0.85 });
+    const stoneDark = new THREE.MeshStandardMaterial({ color: 0x8f8a7c, roughness: 0.9 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd8a640, roughness: 0.45, metalness: 0.35 });
+
+    // Havuz duvarı: sekizgen halka, üstte kalın taş kenar
+    const ring = octagon(FOUNTAIN_R);
+    ring.holes.push(octagonPath(FOUNTAIN_R - 0.28));
+    const wall = new THREE.Mesh(new THREE.ExtrudeGeometry(ring, { depth: 0.55, bevelEnabled: false }), stone);
+    wall.rotation.x = -Math.PI / 2;
+    wall.castShadow = true; wall.receiveShadow = true;
+    decorGroup.add(wall);
+    const capRing = octagon(FOUNTAIN_R + 0.08);
+    capRing.holes.push(octagonPath(FOUNTAIN_R - 0.34));
+    const cap = new THREE.Mesh(new THREE.ExtrudeGeometry(capRing, { depth: 0.08, bevelEnabled: false }), stone);
+    cap.rotation.x = -Math.PI / 2; cap.position.y = 0.55;
+    decorGroup.add(cap);
+
+    // Havuz tabanı ve su yüzeyi
+    const floor = new THREE.Mesh(new THREE.ShapeGeometry(octagon(FOUNTAIN_R - 0.28)), stoneDark);
+    floor.rotation.x = -Math.PI / 2; floor.position.y = 0.03;
+    decorGroup.add(floor);
+    addWaterDisc(new THREE.ShapeGeometry(octagon(FOUNTAIN_R - 0.28)), 0.42);
+
+    // Orta ayak: havuzun içinde kademeli altın kaide
+    const baseProfile = [[0, 0], [0.62, 0], [0.62, 0.12], [0.5, 0.18], [0.32, 0.3], [0.24, 0.55], [0.2, 0.6], [0, 0.6]]
+      .map(([x, y]) => new THREE.Vector2(x, y));
+    const base = new THREE.Mesh(new THREE.LatheGeometry(baseProfile, 8), gold);
+    base.position.y = 0.03; base.castShadow = true;
+    decorGroup.add(base);
+
+    // Kademeli kaseler (alttan üste küçülür), her kasenin içinde su ve kenarından dökülen su perdesi
+    const tiers = [
+      { y: 0.85, r: 0.95 },
+      { y: 1.45, r: 0.62 },
+      { y: 1.95, r: 0.38 }
+    ];
+    let prevTop = 0.63;
+    tiers.forEach((t, i) => {
+      // Kaseyi taşıyan sütun (balüster)
+      const colH = t.y - prevTop - 0.18;
+      if (colH > 0) {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, colH, 12), gold);
+        col.position.y = prevTop + colH / 2; decorGroup.add(col);
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), gold);
+        knob.scale.y = 0.6; knob.position.y = prevTop + colH * 0.5; decorGroup.add(knob);
+      }
+      const bowl = new THREE.Mesh(bowlGeometry(t.r), gold);
+      bowl.position.y = t.y; bowl.castShadow = true;
+      decorGroup.add(bowl);
+      // Kase kenarında süs halkası
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(t.r * 1.0, 0.035, 8, 40), gold);
+      rim.rotation.x = Math.PI / 2; rim.position.y = t.y + t.r * 0.13; decorGroup.add(rim);
+      // Kase içi su
+      addWaterDisc(new THREE.CircleGeometry(t.r * 0.9, 32), t.y + t.r * 0.08);
+      // Kenardan bir alttaki kaseye (ya da havuza) dökülen su perdesi
+      const below = i === 0 ? 0.42 : tiers[i - 1].y + tiers[i - 1].r * 0.08;
+      addStream(t.r * 1.02, t.r * 1.12, t.y + t.r * 0.12, below);
+      prevTop = t.y + 0.02;
+    });
+
+    // Tepedeki taç: küçük soğan kubbe ve fışkıran su
+    const topCol = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.22, 10), gold);
+    topCol.position.y = 2.1; decorGroup.add(topCol);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), gold);
+    bulb.scale.y = 1.3; bulb.position.y = 2.3; decorGroup.add(bulb);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 10), gold);
+    tip.position.y = 2.5; decorGroup.add(tip);
+    addStream(0.02, 0.18, 2.75, 2.0);
+
+    obstacles.push({ minX: -FOUNTAIN_R - 0.1, maxX: FOUNTAIN_R + 0.1, minZ: -FOUNTAIN_R - 0.1, maxZ: FOUNTAIN_R + 0.1 });
+  }
+
+  // Havuz çevresinde beyaz saksılarda bitkiler
+  function planters() {
+    const pot = new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.6 });
+    const soil = new THREE.MeshLambertMaterial({ color: 0x4a3524 });
+    const leafA = new THREE.MeshLambertMaterial({ color: 0x4f8a3a });
+    const leafB = new THREE.MeshLambertMaterial({ color: 0x6aa04a });
+    const flower = new THREE.MeshLambertMaterial({ color: 0xe0605f });
+    const R = FOUNTAIN_R + 0.75;
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      const x = Math.cos(a) * R, z = Math.sin(a) * R;
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 0.55), pot);
+      p.position.set(x, 0.2, z); p.rotation.y = -a; p.castShadow = true; decorGroup.add(p);
+      const sTop = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.48), soil);
+      sTop.position.set(x, 0.41, z); sTop.rotation.y = -a; decorGroup.add(sTop);
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), i % 2 ? leafA : leafB);
+      bush.scale.y = 0.85; bush.position.set(x, 0.66, z); bush.castShadow = true; decorGroup.add(bush);
+      if (i % 2 === 0) {
+        for (let k = 0; k < 4; k++) {
+          const f = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), flower);
+          const b = k * Math.PI / 2 + a;
+          f.position.set(x + Math.cos(b) * 0.22, 0.86, z + Math.sin(b) * 0.22);
+          decorGroup.add(f);
+        }
+      }
+      obstacles.push({ minX: x - .3, maxX: x + .3, minZ: z - .3, maxZ: z + .3 });
     }
   }
+
+  // Su animasyonu: yalnızca Bedesten açıkken dokular kaydırılır
+  (function animateWater() {
+    requestAnimationFrame(animateWater);
+    if (builtRoom !== ROOM_ID) return;
+    const t = performance.now() * 0.001;
+    for (const tex of fountainAnim.streams) tex.offset.y = (t * 0.9) % 1;
+    for (const tex of fountainAnim.water) { tex.offset.x = (t * 0.02) % 1; tex.offset.y = (t * 0.015) % 1; }
+  })();
 
   // ---------- Vitrinler ----------
   const shopClickables = [];
@@ -292,7 +472,9 @@
     m.innerHTML =
       '<div class="modalCard wide"><div class="head"><strong id="shopTitle"></strong>' +
       '<button class="btn ghost modalClose" type="button">Kapat</button></div>' +
-      '<div class="muted" id="shopDesc"></div><div id="shopProducts"></div><p class="msg" id="shopMsg"></p></div>';
+      '<div class="muted" id="shopDesc"></div>' +
+      '<textarea id="shopNote" class="field" rows="2" maxlength="300" placeholder="Sipariş notu: beden, renk, iletişim tercihi (isteğe bağlı). Bu not yalnızca marka ve yönetim tarafından görülür."></textarea>' +
+      '<div id="shopProducts"></div><p class="msg" id="shopMsg"></p></div>';
     document.body.appendChild(m);
     m.addEventListener('click', e => { if (e.target === m) closeAllModals(); });
     m.querySelector('.modalClose').addEventListener('click', closeAllModals);
@@ -309,6 +491,9 @@
     const msg = document.getElementById('shopMsg');
     msg.className = 'msg'; msg.textContent = '';
     box.innerHTML = '';
+    const note = document.getElementById('shopNote');
+    note.value = '';
+    note.style.display = b ? 'block' : 'none';
     if (!b) {
       title.textContent = 'Boş vitrin · ' + slotId;
       desc.textContent = 'Bu vitrin kiralanabilir. Bilgi için yönetime başvurun.';
@@ -346,9 +531,9 @@
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         try {
-          await api('/api/bedesten/orders', { method: 'POST', body: { productId: p.id, qty: 1 } });
+          await api('/api/bedesten/orders', { method: 'POST', body: { productId: p.id, qty: 1, note: document.getElementById('shopNote').value.trim() } });
           msg.className = 'msg ok';
-          msg.textContent = p.name + ' için sipariş talebin alındı. Marka seninle iletişime geçecek.';
+          msg.textContent = p.name + ' için sipariş talebin alındı. Durumunu Profil → Siparişlerim bölümünden takip edebilirsin.';
         } catch (e) { msg.className = 'msg'; msg.textContent = e.message; btn.disabled = false; }
       });
       card.appendChild(btn);
@@ -389,8 +574,8 @@
     facade('x', H);                                             // ön (giriş)
     facade('x', -H, [-PORTAL_W / 2 - 0.3, PORTAL_W / 2 + 0.3]);  // arka, ortada taç kapı
     portal();
-    for (const [x, z] of [[-7.2, -6.6], [7.2, -6.6], [-7.2, 6.6], [7.2, 6.6]]) tree(x, z);
-    gardens();
+    fountain();
+    planters();
     placeShopSigns();
     loadShops();
   }

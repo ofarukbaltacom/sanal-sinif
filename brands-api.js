@@ -1,6 +1,6 @@
 // Bedesten API: markalar, vitrin atamaları, ürünler ve sipariş talepleri.
-// server.js tarafından: require('./brands-api')(app, db, auth, adminOnly, clean);
-module.exports = function registerBrands(app, db, auth, adminOnly, clean) {
+// server.js tarafından: require('./brands-api')(app, db, auth, adminOnly, clean, hashPassword);
+module.exports = function registerBrands(app, db, auth, adminOnly, clean, hashPassword) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS brands (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +31,10 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean) {
       status TEXT NOT NULL DEFAULT 'talep',
       note TEXT,
       created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS brand_users (
+      user_id INTEGER PRIMARY KEY,
+      brand_id INTEGER NOT NULL
     );
   `);
 
@@ -130,6 +134,11 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean) {
   app.delete('/api/admin/brands/:id', auth, adminOnly, (req, res) => {
     const id = Number(req.params.id);
     if (Number.isInteger(id)) {
+      for (const r of db.prepare('SELECT user_id FROM brand_users WHERE brand_id = ?').all(id)) {
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(r.user_id);
+        db.prepare("DELETE FROM users WHERE id = ? AND role = 'brand'").run(r.user_id);
+      }
+      db.prepare('DELETE FROM brand_users WHERE brand_id = ?').run(id);
       db.prepare('DELETE FROM products WHERE brand_id = ?').run(id);
       db.prepare('DELETE FROM brands WHERE id = ?').run(id);
     }
@@ -187,10 +196,124 @@ module.exports = function registerBrands(app, db, auth, adminOnly, clean) {
   });
 
   app.post('/api/admin/orders/:id/status', auth, adminOnly, (req, res) => {
+    const r = setOrderStatus(Number(req.params.id), String((req.body || {}).status || ''), null);
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true });
+  });
+
+  // ---- Sipariş durumu (stok mantığı) ----
+  // Onaylanınca stok düşer; onaylanmış/kargodaki bir sipariş iptal edilirse stok geri eklenir.
+  const STOCK_HELD = ['onaylandi', 'kargoda', 'teslim'];
+  function setOrderStatus(orderId, status, brandId) {
+    if (!STATUSES.includes(status)) return { error: 'Geçersiz durum.' };
+    const o = db.prepare('SELECT o.*, p.brand_id, p.stock FROM orders o JOIN products p ON p.id = o.product_id WHERE o.id = ?').get(orderId);
+    if (!o) return { error: 'Sipariş bulunamadı.' };
+    if (brandId !== null && o.brand_id !== brandId) return { error: 'Bu sipariş sana ait değil.' };
+    const wasHeld = STOCK_HELD.includes(o.status);
+    const willHold = STOCK_HELD.includes(status);
+    db.exec('BEGIN');
+    try {
+      if (!wasHeld && willHold) {
+        if (o.stock < o.qty) { db.exec('ROLLBACK'); return { error: 'Stok yetersiz, önce stoğu güncelle.' }; }
+        db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?').run(o.qty, o.product_id);
+      } else if (wasHeld && !willHold) {
+        db.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').run(o.qty, o.product_id);
+      }
+      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      return { error: 'Durum güncellenemedi.' };
+    }
+    return { ok: true };
+  }
+
+  // ---- Marka hesapları (yönetici açar) ----
+  app.get('/api/admin/brands/:id/accounts', auth, adminOnly, (req, res) => {
     const id = Number(req.params.id);
-    const status = String((req.body || {}).status || '');
-    if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Geçersiz durum.' });
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+    const rows = db.prepare('SELECT u.id, u.username, u.display_name FROM brand_users bu JOIN users u ON u.id = bu.user_id WHERE bu.brand_id = ? ORDER BY u.id').all(id);
+    res.json(rows.map(r => ({ id: r.id, username: r.username, displayName: r.display_name })));
+  });
+
+  app.post('/api/admin/brands/:id/accounts', auth, adminOnly, (req, res) => {
+    const brandId = Number(req.params.id);
+    if (!db.prepare('SELECT id FROM brands WHERE id = ?').get(brandId)) return res.status(404).json({ error: 'Marka yok.' });
+    const b = req.body || {};
+    const username = clean(b.username, 30).toLowerCase();
+    const displayName = clean(b.displayName, 40);
+    const password = String(b.password || '');
+    if (!/^[a-z0-9_.-]{3,30}$/.test(username)) return res.status(400).json({ error: 'Kullanıcı adı 3-30 karakter olmalı (harf, rakam, _ . -).' });
+    if (!displayName) return res.status(400).json({ error: 'Görünen ad gerekli.' });
+    if (password.length < 8) return res.status(400).json({ error: 'Şifre en az 8 karakter olmalı.' });
+    let info;
+    try {
+      info = db.prepare('INSERT INTO users (username, display_name, password_hash, role, is_admin, created_at) VALUES (?, ?, ?, ?, 0, ?)')
+        .run(username, displayName, hashPassword(password), 'brand', new Date().toISOString());
+    } catch (e) { return res.status(400).json({ error: 'Bu kullanıcı adı zaten var.' }); }
+    db.prepare('INSERT INTO brand_users (user_id, brand_id) VALUES (?, ?)').run(Number(info.lastInsertRowid), brandId);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/admin/brand-accounts/:userId', auth, adminOnly, (req, res) => {
+    const uid = Number(req.params.userId);
+    if (!db.prepare('SELECT user_id FROM brand_users WHERE user_id = ?').get(uid)) return res.status(404).json({ error: 'Hesap bulunamadı.' });
+    db.prepare('DELETE FROM brand_users WHERE user_id = ?').run(uid);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uid);
+    db.prepare("DELETE FROM users WHERE id = ? AND role = 'brand'").run(uid);
+    res.json({ ok: true });
+  });
+
+  // ---- Marka paneli (marka hesabı kendi verisini görür) ----
+  function brandOnly(req, res, next) {
+    const row = db.prepare('SELECT brand_id FROM brand_users WHERE user_id = ?').get(req.user.id);
+    if (!row) return res.status(403).json({ error: 'Bu sayfa yalnızca marka hesapları içindir.' });
+    req.brandId = row.brand_id;
+    next();
+  }
+
+  app.get('/api/brand/me', auth, brandOnly, (req, res) => {
+    const b = db.prepare('SELECT * FROM brands WHERE id = ?').get(req.brandId);
+    if (!b) return res.status(404).json({ error: 'Marka bulunamadı.' });
+    res.json(brandView(b));
+  });
+
+  app.get('/api/brand/orders', auth, brandOnly, (req, res) => {
+    const rows = db.prepare(`
+      SELECT o.*, p.name AS product_name, p.price, u.display_name AS user_name, u.username
+      FROM orders o JOIN products p ON p.id = o.product_id JOIN users u ON u.id = o.user_id
+      WHERE p.brand_id = ? ORDER BY o.id DESC LIMIT 500`).all(req.brandId);
+    res.json(rows.map(r => ({
+      id: r.id, product: r.product_name, user: r.user_name, username: r.username,
+      qty: r.qty, price: r.price, status: r.status, note: r.note || '', createdAt: r.created_at
+    })));
+  });
+
+  app.post('/api/brand/orders/:id/status', auth, brandOnly, (req, res) => {
+    const r = setOrderStatus(Number(req.params.id), String((req.body || {}).status || ''), req.brandId);
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true });
+  });
+
+  app.get('/api/brand/products', auth, brandOnly, (req, res) => {
+    res.json(db.prepare('SELECT * FROM products WHERE brand_id = ? ORDER BY id').all(req.brandId).map(productView));
+  });
+
+  app.post('/api/brand/products', auth, brandOnly, (req, res) => {
+    const v = productInput(req.body || {});
+    if (v.error) return res.status(400).json({ error: v.error });
+    db.prepare('INSERT INTO products (brand_id, name, description, price, stock, image_url, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(req.brandId, v.name, v.description, v.price, v.stock, v.imageUrl || null, v.active, new Date().toISOString());
+    res.json({ ok: true });
+  });
+
+  app.put('/api/brand/products/:id', auth, brandOnly, (req, res) => {
+    const id = Number(req.params.id);
+    const p = db.prepare('SELECT brand_id FROM products WHERE id = ?').get(id);
+    if (!p || p.brand_id !== req.brandId) return res.status(404).json({ error: 'Ürün bulunamadı.' });
+    const v = productInput(req.body || {});
+    if (v.error) return res.status(400).json({ error: v.error });
+    db.prepare('UPDATE products SET name = ?, description = ?, price = ?, stock = ?, image_url = ?, active = ? WHERE id = ?')
+      .run(v.name, v.description, v.price, v.stock, v.imageUrl || null, v.active, id);
     res.json({ ok: true });
   });
 };

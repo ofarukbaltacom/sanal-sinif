@@ -205,6 +205,7 @@
     </select>
   </div>
   <div class="row"><button id="logoutBtn" class="btn ghost" type="button">Çıkış</button></div>
+  <a id="brandLink" href="/marka.html" class="btn ghost" style="display:none;margin-top:8px;text-align:center;text-decoration:none">🏷 Marka Paneli</a>
   <a id="adminLink" href="/admin.html" class="btn ghost" style="display:none;margin-top:8px;text-align:center;text-decoration:none">⚙ Yönetim Paneli</a>
   <div class="row" id="adminCapRow" style="display:none">
     <button id="adminShotBtn" class="btn ghost" type="button">📸 Ekran görüntüsü</button>
@@ -355,6 +356,7 @@
       <button id="tabCal" class="tab active" type="button">Eğitim Takvimi</button>
       <button id="tabNotes" class="tab" type="button">Ders Notlarım</button>
       <button id="tabAtt" class="tab" type="button">Katılımım</button>
+      <button id="tabOrders" class="tab" type="button">Siparişlerim</button>
     </div>
     <div id="profCal">
       <div class="calHead">
@@ -377,6 +379,7 @@
       <div id="myNotesList"></div>
     </div>
     <div id="profAtt" style="display:none"><div id="attList"></div></div>
+    <div id="profOrders" style="display:none"><div id="ordersList" style="max-height:360px;overflow-y:auto;font-size:14px"></div></div>
     <p id="profMsg" class="msg"></p>
   </div>
 </div>
@@ -2068,14 +2071,47 @@ function setTab(which) {
   $('profCal').style.display = which === 'cal' ? 'block' : 'none';
   $('profNotes').style.display = which === 'notes' ? 'block' : 'none';
   $('profAtt').style.display = which === 'att' ? 'block' : 'none';
+  $('profOrders').style.display = which === 'orders' ? 'block' : 'none';
   $('tabCal').classList.toggle('active', which === 'cal');
   $('tabNotes').classList.toggle('active', which === 'notes');
   $('tabAtt').classList.toggle('active', which === 'att');
+  $('tabOrders').classList.toggle('active', which === 'orders');
   if (which === 'att') renderAttendance();
+  if (which === 'orders') renderMyOrders();
+}
+
+// Bedesten sipariş taleplerim
+const ORDER_STATUS_TR = { talep: 'Talep alındı', onaylandi: 'Onaylandı', kargoda: 'Kargoda', teslim: 'Teslim edildi', iptal: 'İptal' };
+async function renderMyOrders() {
+  const box = $('ordersList');
+  box.innerHTML = '';
+  try {
+    const list = await api('/api/bedesten/my-orders');
+    if (!list.length) {
+      box.textContent = 'Henüz sipariş talebin yok. Bedesten\'deki vitrinlerden talep oluşturabilirsin.';
+      return;
+    }
+    for (const o of list) {
+      const d = document.createElement('div');
+      d.className = 'noteItem';
+      const t = document.createElement('strong');
+      t.textContent = o.brand + ' · ' + o.product;
+      d.appendChild(t);
+      const sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = new Date(o.createdAt).toLocaleString('tr-TR') + ' · ' + o.qty + ' × ' +
+        Number(o.price).toLocaleString('tr-TR') + ' ₺ · ' + (ORDER_STATUS_TR[o.status] || o.status);
+      d.appendChild(sub);
+      box.appendChild(d);
+    }
+  } catch (err) {
+    box.textContent = err.message;
+  }
 }
 $('tabCal').addEventListener('click', () => setTab('cal'));
 $('tabNotes').addEventListener('click', () => setTab('notes'));
 $('tabAtt').addEventListener('click', () => setTab('att'));
+$('tabOrders').addEventListener('click', () => setTab('orders'));
 
 async function renderAttendance() {
   const box = $('attList');
@@ -2765,6 +2801,7 @@ function showCard(id) {
 function roleLabel(role) {
   if (role === 'teacher') return 'Eğitmen hesabı';
   if (role === 'moderator') return 'Moderatör hesabı';
+  if (role === 'brand') return 'Marka hesabı';
   return 'Öğrenci hesabı';
 }
 
@@ -2885,6 +2922,7 @@ function enterRoom(p, first) {
     $('mini').style.display = 'block';
     setWatermark(me.displayName);
     $('adminLink').style.display = me.isAdmin ? 'block' : 'none';
+    $('brandLink').style.display = me.role === 'brand' ? 'block' : 'none';
     setTimeout(() => $('info').classList.add('faded'), 12000);
     if (!localStorage.getItem(TOUR_KEY)) {
       localStorage.setItem(TOUR_KEY, '1');
